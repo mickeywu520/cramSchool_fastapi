@@ -22,5 +22,13 @@ class BannerCreateRequest(BaseModel):
     is_active: bool = True
 
 
+class BannerUpdateRequest(BaseModel):
+    title: str | None = None
+    image_url: str | None = None
+    link_url: str | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
+
+
 class BannerReorderRequest(BaseModel):
     order: list[int]
