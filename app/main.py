@@ -2,11 +2,15 @@
 
 import logging
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
+from app.seed import seed_database
 from app.middleware.exception_handler import (
     app_exception_handler,
     global_exception_handler,
@@ -46,10 +50,22 @@ app.add_exception_handler(Exception, global_exception_handler)
 for router in routers:
     app.include_router(router, prefix="/api/v1")
 
+# Serve uploaded files
+upload_dir = Path(settings.UPLOAD_DIR)
+upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
+
+# Also serve /banners and /teachers from uploads for backward compat
+for static_dir in ["banners", "teachers"]:
+    dir_path = upload_dir / static_dir
+    dir_path.mkdir(parents=True, exist_ok=True)
+    app.mount(f"/{static_dir}", StaticFiles(directory=str(dir_path)), name=static_dir)
+
 
 @app.on_event("startup")
 async def on_startup():
     await init_db()
+    await seed_database()
 
 
 @app.get("/api/v1/health")

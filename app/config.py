@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://localhost:4200",
         "http://127.0.0.1:4200",
+        "https://cramschool-b4d52.web.app",
+        "https://cramschool-b4d52.firebaseapp.com",
     ]
 
     # Upload

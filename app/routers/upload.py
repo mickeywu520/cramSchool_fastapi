@@ -4,7 +4,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -29,6 +29,7 @@ UPLOAD_DIRS = {
 @router.post("/image/{category}")
 async def upload_image(
     category: str,
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
@@ -54,10 +55,11 @@ async def upload_image(
     file_path = upload_path / filename
     with open(file_path, "wb") as f:
         f.write(contents)
-    relative_url = f"/uploads/{subdir}/{filename}"
+    base_url = str(request.base_url).rstrip("/")
+    full_url = f"{base_url}/uploads/{subdir}/{filename}"
     return {
         "success": True,
-        "url": relative_url,
+        "url": full_url,
         "filename": filename,
         "message": "上傳成功",
     }
