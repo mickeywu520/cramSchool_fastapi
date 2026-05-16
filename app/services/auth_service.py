@@ -1,10 +1,11 @@
 """Authentication service - registration, login, token management."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.refresh_token import RefreshToken
@@ -63,7 +64,11 @@ async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
 
 async def login_user(db: AsyncSession, email: str, password: str) -> dict:
     """Authenticate user with email/password and return tokens."""
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.student), selectinload(User.teacher))
+        .where(User.email == email)
+    )
     user = result.scalar_one_or_none()
 
     if not user or not user.password_hash:
@@ -137,9 +142,7 @@ async def _generate_tokens(db: AsyncSession, user: User) -> dict:
     refresh_token_record = RefreshToken(
         user_id=user.id,
         token="",  # placeholder, will update after creation
-        expires_at=datetime.now(timezone.utc).replace(
-            day=datetime.now(timezone.utc).day + settings.REFRESH_TOKEN_EXPIRE_DAYS
-        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(refresh_token_record)
     await db.flush()
