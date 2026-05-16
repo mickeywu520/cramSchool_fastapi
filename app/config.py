@@ -25,6 +25,7 @@ class Settings(BaseSettings):
         "https://cramschool-b4d52.web.app",
         "https://cramschool-b4d52.firebaseapp.com",
         "https://www.gateway2go.bbroot.com",
+        "https://api.gateway2go.bbroot.com",
     ]
 
     # Upload
