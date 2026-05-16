@@ -8,8 +8,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.teacher import Teacher
 from app.models.user import User
-from app.services import teacher_service
-from app.services.teacher_service import teacher_service as ts
+from app.services import teacher_service as ts
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/teachers", tags=["Teachers"])

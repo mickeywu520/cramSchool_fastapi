@@ -1,0 +1,49 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+venv/
+.venv/
+env/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Uploads
+uploads/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Docker
+.docker/
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.bak
+*.tmp
+tmp/
