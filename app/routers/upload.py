@@ -55,7 +55,7 @@ async def upload_image(
     file_path = upload_path / filename
     with open(file_path, "wb") as f:
         f.write(contents)
-    base_url = str(request.base_url).rstrip("/")
+    base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
     full_url = f"{base_url}/uploads/{subdir}/{filename}"
     return {
         "success": True,
