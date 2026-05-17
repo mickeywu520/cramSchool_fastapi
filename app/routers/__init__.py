@@ -11,6 +11,7 @@ from app.routers.announcement import router as announcement_router
 from app.routers.banner import router as banner_router
 from app.routers.homepage import router as homepage_router
 from app.routers.about_card import router as about_card_router
+from app.routers.settings import router as settings_router
 from app.routers.upload import router as upload_router
 
 routers = [
@@ -25,5 +26,6 @@ routers = [
     banner_router,
     homepage_router,
     about_card_router,
+    settings_router,
     upload_router,
 ]

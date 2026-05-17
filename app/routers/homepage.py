@@ -10,6 +10,7 @@ from app.models.announcement import Announcement
 from app.models.banner import Banner
 from app.models.course import Course
 from app.models.honor import Honor
+from app.models.site_setting import SiteSetting
 from app.models.teacher import Teacher
 
 router = APIRouter(prefix="/homepage", tags=["Homepage"])
@@ -65,6 +66,11 @@ async def get_homepage_data(db: AsyncSession = Depends(get_db)):
     )
     early_bird_courses = course_result.scalars().all()
 
+    # Banner interval
+    interval_result = await db.execute(select(SiteSetting).where(SiteSetting.key == "banner_interval"))
+    interval_setting = interval_result.scalar_one_or_none()
+    banner_interval = int(interval_setting.value) if interval_setting else 5
+
     return {
         "banners": [
             {
@@ -75,6 +81,7 @@ async def get_homepage_data(db: AsyncSession = Depends(get_db)):
             }
             for b in banners
         ],
+        "banner_interval_seconds": banner_interval,
         "about_cards": [
             {
                 "id": c.id,

@@ -54,7 +54,12 @@ class TeacherAdminResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.get("", response_model=object)
+class TeacherListResponse(BaseModel):
+    total: int
+    teachers: list[TeacherAdminResponse]
+
+
+@router.get("", response_model=TeacherListResponse)
 async def list_teachers(
     search: str | None = Query(None),
     subject: str | None = Query(None),
