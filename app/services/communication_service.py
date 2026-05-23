@@ -80,6 +80,10 @@ async def submit_feedback(
 ) -> ParentFeedback:
     entry = await get_entry_by_id(db, entry_id, student_id)
 
+    if entry.parent_feedback and entry.parent_feedback.is_signed:
+        from app.utils.exceptions import ForbiddenException
+        raise ForbiddenException("此聯絡簿已簽署，無法再修改")
+
     if entry.parent_feedback:
         pf = entry.parent_feedback
         pf.feedback = feedback

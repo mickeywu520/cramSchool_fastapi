@@ -14,13 +14,16 @@ async def get_courses(
     db: AsyncSession,
     category: str | None = None,
     subject: str | None = None,
+    grade_level: str | None = None,
     is_early_bird: bool | None = None,
 ) -> list[Course]:
-    query = select(Course).where(Course.is_active == True).options(selectinload(Course.teacher))
+    query = select(Course).options(selectinload(Course.teacher))
     if category:
         query = query.where(Course.category == category)
     if subject:
         query = query.where(Course.subject == subject)
+    if grade_level:
+        query = query.where(Course.grade_level == grade_level)
     if is_early_bird is not None:
         query = query.where(Course.is_early_bird == is_early_bird)
     query = query.order_by(Course.display_order)

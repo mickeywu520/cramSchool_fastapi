@@ -37,21 +37,33 @@ async def get_db() -> AsyncSession:
 
 
 async def _add_missing_columns():
-    """Add new columns to students table if they don't exist (SQLite compat)."""
-    new_columns = {
-        "gender": "VARCHAR(10) NOT NULL DEFAULT ''",
-        "class_name": "VARCHAR(20)",
-        "parent2_phone": "VARCHAR(20)",
-        "home_phone": "VARCHAR(20)",
-        "id_number": "VARCHAR(20)",
+    """Add new columns if they don't exist (SQLite compat)."""
+    table_columns = {
+        "students": {
+            "gender": "VARCHAR(10) NOT NULL DEFAULT ''",
+            "class_name": "VARCHAR(20)",
+            "parent2_phone": "VARCHAR(20)",
+            "home_phone": "VARCHAR(20)",
+            "id_number": "VARCHAR(20)",
+        },
+        "courses": {
+            "grade_level": "VARCHAR(20)",
+            "day_of_week": "INTEGER",
+            "start_time": "VARCHAR(10)",
+            "end_time": "VARCHAR(10)",
+            "location": "VARCHAR(50)",
+            "school_year": "VARCHAR(10)",
+            "semester": "VARCHAR(10)",
+        },
     }
     async with engine.begin() as conn:
-        for col_name, col_type in new_columns.items():
-            try:
-                await conn.execute(text(f"ALTER TABLE students ADD COLUMN {col_name} {col_type}"))
-                logger.info(f"Added column 'students.{col_name}'")
-            except Exception:
-                pass  # column already exists
+        for table, columns in table_columns.items():
+            for col_name, col_type in columns.items():
+                try:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+                    logger.info(f"Added column '{table}.{col_name}'")
+                except Exception:
+                    pass  # column already exists
 
 
 async def init_db():
