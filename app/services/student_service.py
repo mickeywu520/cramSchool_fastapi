@@ -33,11 +33,16 @@ async def get_student_response(db: AsyncSession, user_id: int) -> dict:
     return {
         "id": student.id,
         "student_name": student.student_name,
+        "gender": student.gender,
         "birth_date": student.birth_date,
+        "school": student.school,
+        "grade": student.grade,
+        "class_name": student.class_name,
         "parent_name": student.parent_name,
         "phone": student.phone,
-        "grade": student.grade,
-        "school": student.school,
+        "parent2_phone": student.parent2_phone,
+        "home_phone": student.home_phone,
+        "id_number": student.id_number,
         "interested_subjects": subjects,
         "avatar_url": student.avatar_url,
         "student_number": student.student_number,
@@ -47,7 +52,7 @@ async def get_student_response(db: AsyncSession, user_id: int) -> dict:
 
 async def update_student(db: AsyncSession, user_id: int, data: dict) -> dict:
     student = await get_student_by_user_id(db, user_id)
-    for field in ["student_name", "parent_name", "phone", "grade", "school"]:
+    for field in ["student_name", "gender", "school", "grade", "class_name", "parent_name", "phone", "parent2_phone", "home_phone", "id_number"]:
         if data.get(field) is not None:
             setattr(student, field, data[field])
     if data.get("interested_subjects") is not None:

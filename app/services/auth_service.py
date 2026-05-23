@@ -48,11 +48,16 @@ async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
     student = Student(
         user_id=user.id,
         student_name=data["student_name"],
+        gender=data["gender"],
         birth_date=data["birth_date"],
+        school=data["school"],
+        grade=data["grade"],
+        class_name=data.get("class_name"),
         parent_name=data["parent_name"],
         phone=data["phone"],
-        grade=data["grade"],
-        school=data["school"],
+        parent2_phone=data.get("parent2_phone"),
+        home_phone=data.get("home_phone"),
+        id_number=data.get("id_number"),
         interested_subjects=json.dumps(data.get("interested_subjects", []), ensure_ascii=False),
         student_number=student_number,
     )

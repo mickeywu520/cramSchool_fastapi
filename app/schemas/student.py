@@ -7,11 +7,16 @@ from pydantic import BaseModel, Field
 class StudentResponse(BaseModel):
     id: int
     student_name: str
+    gender: str
     birth_date: date
+    school: str
+    grade: str
+    class_name: str | None = None
     parent_name: str
     phone: str
-    grade: str
-    school: str
+    parent2_phone: str | None = None
+    home_phone: str | None = None
+    id_number: str | None = None
     interested_subjects: list[str] = []
     avatar_url: str | None = None
     student_number: str | None = None
@@ -22,10 +27,15 @@ class StudentResponse(BaseModel):
 
 class StudentUpdateRequest(BaseModel):
     student_name: str | None = Field(None, max_length=50)
+    gender: str | None = None
+    school: str | None = Field(None, max_length=100)
+    grade: str | None = Field(None, max_length=20)
+    class_name: str | None = None
     parent_name: str | None = Field(None, max_length=50)
     phone: str | None = Field(None, max_length=20)
-    grade: str | None = Field(None, max_length=20)
-    school: str | None = Field(None, max_length=100)
+    parent2_phone: str | None = None
+    home_phone: str | None = None
+    id_number: str | None = None
     interested_subjects: list[str] | None = None
 
 

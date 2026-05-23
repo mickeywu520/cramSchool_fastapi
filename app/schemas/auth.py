@@ -9,11 +9,16 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     student_name: str = Field(min_length=1, max_length=50)
+    gender: str = Field(min_length=1, max_length=10)
     birth_date: date
+    school: str = Field(min_length=1, max_length=100)
+    grade: str = Field(min_length=1, max_length=20)
+    class_name: str | None = None
     parent_name: str = Field(min_length=1, max_length=50)
     phone: str = Field(min_length=1, max_length=20)
-    grade: str = Field(min_length=1, max_length=20)
-    school: str = Field(min_length=1, max_length=100)
+    parent2_phone: str | None = None
+    home_phone: str | None = None
+    id_number: str | None = None
     interested_subjects: list[str] = Field(default_factory=list)
 
 
