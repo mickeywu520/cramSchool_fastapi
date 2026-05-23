@@ -100,10 +100,13 @@ async def submit_feedback(
 
 
 async def create_entry(db: AsyncSession, data: dict) -> CommunicationBookEntry:
+    raw_date = data["entry_date"]
+    if isinstance(raw_date, str):
+        raw_date = date.fromisoformat(raw_date) if raw_date else date.today()
     entry = CommunicationBookEntry(
         student_id=data["student_id"],
         teacher_id=data["teacher_id"],
-        entry_date=data["entry_date"],
+        entry_date=raw_date,
         focus_score=data.get("focus_score"),
         interaction_score=data.get("interaction_score"),
         homework_completion=data.get("homework_completion"),
@@ -114,11 +117,14 @@ async def create_entry(db: AsyncSession, data: dict) -> CommunicationBookEntry:
 
     # Add homework records
     for hw in data.get("homework", []):
+        raw_due = hw.get("due_date")
+        if isinstance(raw_due, str):
+            raw_due = date.fromisoformat(raw_due) if raw_due else None
         db.add(HomeworkRecord(
             communication_book_id=entry.id,
             subject=hw.get("subject", ""),
             content=hw.get("content", ""),
-            due_date=hw.get("due_date"),
+            due_date=raw_due,
         ))
 
     # Add reminders

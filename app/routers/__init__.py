@@ -1,5 +1,6 @@
 """API routers."""
 
+from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
 from app.routers.student import router as student_router
 from app.routers.teacher import router as teacher_router
@@ -15,6 +16,7 @@ from app.routers.settings import router as settings_router
 from app.routers.upload import router as upload_router
 
 routers = [
+    admin_router,
     auth_router,
     student_router,
     teacher_router,
