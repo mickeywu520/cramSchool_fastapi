@@ -10,11 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.middleware.auth_middleware import require_teacher_or_admin
+from app.models.branch import Branch
 from app.models.course import Course
 from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User
+from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.schemas.communication import CommunicationListResponse
 from app.schemas.course import (
     CourseCreateRequest,
@@ -36,6 +38,7 @@ def _format_course(c):
         "description": c.description, "schedule": c.schedule,
         "grade_level": c.grade_level, "day_of_week": c.day_of_week,
         "start_time": c.start_time, "end_time": c.end_time, "location": c.location,
+        "branch_id": c.branch_id, "branch_name": c.branch.name if c.branch else None,
         "school_year": c.school_year, "semester": c.semester,
         "price": c.price, "max_students": c.max_students,
         "is_early_bird": c.is_early_bird, "early_bird_discount": c.early_bird_discount,
@@ -113,10 +116,13 @@ async def list_courses(
     grade_level: str | None = Query(None),
     subject: str | None = Query(None),
     teacher_id: int | None = Query(None),
+    branch_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    query = select(Course).options(selectinload(Course.teacher))
+    query = select(Course).options(selectinload(Course.teacher), selectinload(Course.branch))
+    if branch_id:
+        query = query.where(Course.branch_id == branch_id)
     if category:
         query = query.where(Course.category == category)
     if grade_level:
@@ -141,9 +147,9 @@ async def create_course(
     db.add(course)
     await db.flush()
     await db.refresh(course)
-    # Reload with teacher
+    # Reload with teacher and branch
     result = await db.execute(
-        select(Course).where(Course.id == course.id).options(selectinload(Course.teacher))
+        select(Course).where(Course.id == course.id).options(selectinload(Course.teacher), selectinload(Course.branch))
     )
     return _format_course(result.scalar_one())
 
@@ -156,7 +162,7 @@ async def update_course(
     current_user: User = Depends(require_teacher_or_admin),
 ):
     result = await db.execute(
-        select(Course).where(Course.id == course_id).options(selectinload(Course.teacher))
+        select(Course).where(Course.id == course_id).options(selectinload(Course.teacher), selectinload(Course.branch))
     )
     course = result.scalar_one_or_none()
     if not course:
@@ -280,8 +286,71 @@ async def get_course_filters(
     )
     teachers = [{"id": t.id, "name": t.name} for t in result.scalars().all()]
 
+    result = await db.execute(
+        select(Branch).where(Branch.is_active == True).order_by(Branch.display_order)
+    )
+    branches = [{"id": b.id, "name": b.name} for b in result.scalars().all()]
+
     return {
         "grade_levels": grade_levels,
         "subjects": subjects,
         "teachers": teachers,
+        "branches": branches,
     }
+
+
+# ── Branch CRUD ──
+
+@router.get("/branches", response_model=list[BranchResponse])
+async def list_branches(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(select(Branch).order_by(Branch.display_order))
+    return result.scalars().all()
+
+
+@router.post("/branches", response_model=BranchResponse, status_code=201)
+async def create_branch(
+    data: BranchCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    branch = Branch(**data.model_dump())
+    db.add(branch)
+    await db.commit()
+    await db.refresh(branch)
+    return branch
+
+
+@router.put("/branches/{branch_id}", response_model=BranchResponse)
+async def update_branch(
+    branch_id: int,
+    data: BranchUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalar_one_or_none()
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    for key, val in data.model_dump(exclude_none=True).items():
+        setattr(branch, key, val)
+    await db.commit()
+    await db.refresh(branch)
+    return branch
+
+
+@router.delete("/branches/{branch_id}")
+async def delete_branch(
+    branch_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalar_one_or_none()
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    await db.delete(branch)
+    await db.commit()
+    return {"success": True, "message": "分校已刪除"}

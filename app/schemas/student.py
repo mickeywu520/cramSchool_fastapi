@@ -17,6 +17,7 @@ class StudentResponse(BaseModel):
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
+    branch_id: int | None = None
     interested_subjects: list[str] = []
     avatar_url: str | None = None
     student_number: str | None = None
@@ -31,6 +32,7 @@ class StudentUpdateRequest(BaseModel):
     school: str | None = Field(None, max_length=100)
     grade: str | None = Field(None, max_length=20)
     class_name: str | None = None
+    branch_id: int | None = None
     parent_name: str | None = Field(None, max_length=50)
     phone: str | None = Field(None, max_length=20)
     parent2_phone: str | None = None

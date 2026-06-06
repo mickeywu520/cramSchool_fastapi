@@ -18,6 +18,8 @@ class CourseResponse(BaseModel):
     start_time: str | None = None
     end_time: str | None = None
     location: str | None = None
+    branch_id: int | None = None
+    branch_name: str | None = None
     school_year: str | None = None
     semester: str | None = None
     price: int | None = None
@@ -42,6 +44,7 @@ class CourseCreateRequest(BaseModel):
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)
+    branch_id: int | None = None
     school_year: str | None = Field(None, max_length=10)
     semester: str | None = Field(None, max_length=10)
     price: int | None = None
@@ -64,6 +67,7 @@ class CourseUpdateRequest(BaseModel):
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)
+    branch_id: int | None = None
     school_year: str | None = Field(None, max_length=10)
     semester: str | None = Field(None, max_length=10)
     price: int | None = None

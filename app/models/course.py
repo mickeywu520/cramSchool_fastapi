@@ -23,6 +23,7 @@ class Course(Base):
     start_time: Mapped[str | None] = mapped_column(String(10), nullable=True)
     end_time: Mapped[str | None] = mapped_column(String(10), nullable=True)
     location: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    branch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("branches.id"), nullable=True)
     school_year: Mapped[str | None] = mapped_column(String(10), nullable=True)
     semester: Mapped[str | None] = mapped_column(String(10), nullable=True)
     price: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -38,6 +39,7 @@ class Course(Base):
 
     # Relationships
     teacher = relationship("Teacher", back_populates="courses")
+    branch = relationship("Branch", back_populates="courses")
     enrollments = relationship("Enrollment", back_populates="course")
     leave_applications = relationship("LeaveApplication", back_populates="course")
     makeup_classes = relationship("MakeupClass", back_populates="course")

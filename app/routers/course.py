@@ -18,6 +18,7 @@ def _format_course(c):
         "description": c.description, "schedule": c.schedule,
         "grade_level": c.grade_level, "day_of_week": c.day_of_week,
         "start_time": c.start_time, "end_time": c.end_time, "location": c.location,
+        "branch_id": c.branch_id, "branch_name": c.branch.name if c.branch else None,
         "school_year": c.school_year, "semester": c.semester,
         "price": c.price, "max_students": c.max_students,
         "is_early_bird": c.is_early_bird, "early_bird_discount": c.early_bird_discount,
@@ -31,10 +32,11 @@ async def list_courses(
     subject: str | None = Query(None),
     grade_level: str | None = Query(None),
     is_early_bird: bool | None = Query(None),
+    branch_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     courses = await course_service.get_courses(
-        db, category=category, subject=subject, grade_level=grade_level, is_early_bird=is_early_bird
+        db, category=category, subject=subject, grade_level=grade_level, is_early_bird=is_early_bird, branch_id=branch_id
     )
     result = [_format_course(c) for c in courses]
     return {"total": len(result), "courses": result}

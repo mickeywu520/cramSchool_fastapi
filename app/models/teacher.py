@@ -18,6 +18,7 @@ class Teacher(Base):
     title: Mapped[str | None] = mapped_column(String(100), nullable=True)
     motto: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    branch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("branches.id"), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     life_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)

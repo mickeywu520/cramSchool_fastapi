@@ -22,6 +22,7 @@ class TeacherCreateRequest(BaseModel):
     description: str | None = None
     photo_url: str | None = None
     life_photo_url: str | None = None
+    branch_id: int | None = None
     display_order: int = 0
     is_active: bool = True
 
@@ -34,6 +35,7 @@ class TeacherUpdateRequest(BaseModel):
     description: str | None = None
     photo_url: str | None = None
     life_photo_url: str | None = None
+    branch_id: int | None = None
     display_order: int | None = None
     is_active: bool | None = None
 
@@ -48,6 +50,7 @@ class TeacherAdminResponse(BaseModel):
     description: str | None = None
     photo_url: str | None = None
     life_photo_url: str | None = None
+    branch_id: int | None = None
     display_order: int = 0
     is_active: bool = True
 
@@ -63,9 +66,10 @@ class TeacherListResponse(BaseModel):
 async def list_teachers(
     search: str | None = Query(None),
     subject: str | None = Query(None),
+    branch_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    teachers = await ts.get_teachers(db, search=search, subject=subject)
+    teachers = await ts.get_teachers(db, search=search, subject=subject, branch_id=branch_id)
     return {"total": len(teachers), "teachers": teachers}
 
 

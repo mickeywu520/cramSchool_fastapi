@@ -17,6 +17,7 @@ from app.models.honor import Honor
 from app.models.banner import Banner
 from app.models.refresh_token import RefreshToken
 from app.models.about_card import AboutCard
+from app.models.branch import Branch
 
 __all__ = [
     "User",
@@ -36,4 +37,5 @@ __all__ = [
     "Banner",
     "RefreshToken",
     "AboutCard",
+    "Branch",
 ]

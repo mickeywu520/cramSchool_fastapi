@@ -24,6 +24,7 @@ class Student(Base):
     parent2_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     home_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     id_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    branch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("branches.id"), nullable=True)
     interested_subjects: Mapped[str | None] = mapped_column(Text, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     student_number: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)

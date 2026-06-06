@@ -16,8 +16,9 @@ async def get_courses(
     subject: str | None = None,
     grade_level: str | None = None,
     is_early_bird: bool | None = None,
+    branch_id: int | None = None,
 ) -> list[Course]:
-    query = select(Course).options(selectinload(Course.teacher))
+    query = select(Course).options(selectinload(Course.teacher), selectinload(Course.branch))
     if category:
         query = query.where(Course.category == category)
     if subject:
@@ -26,6 +27,8 @@ async def get_courses(
         query = query.where(Course.grade_level == grade_level)
     if is_early_bird is not None:
         query = query.where(Course.is_early_bird == is_early_bird)
+    if branch_id is not None:
+        query = query.where(Course.branch_id == branch_id)
     query = query.order_by(Course.display_order)
     result = await db.execute(query)
     return result.scalars().all()
@@ -33,7 +36,7 @@ async def get_courses(
 
 async def get_course_by_id(db: AsyncSession, course_id: int) -> Course:
     result = await db.execute(
-        select(Course).where(Course.id == course_id).options(selectinload(Course.teacher))
+        select(Course).where(Course.id == course_id).options(selectinload(Course.teacher), selectinload(Course.branch))
     )
     course = result.scalar_one_or_none()
     if not course:

@@ -52,8 +52,15 @@ async def _add_missing_columns():
             "start_time": "VARCHAR(10)",
             "end_time": "VARCHAR(10)",
             "location": "VARCHAR(50)",
+            "branch_id": "INTEGER REFERENCES branches(id)",
             "school_year": "VARCHAR(10)",
             "semester": "VARCHAR(10)",
+        },
+        "students": {
+            "branch_id": "INTEGER REFERENCES branches(id)",
+        },
+        "teachers": {
+            "branch_id": "INTEGER REFERENCES branches(id)",
         },
     }
     async with engine.begin() as conn:

@@ -11,6 +11,7 @@ async def get_teachers(
     db: AsyncSession,
     search: str | None = None,
     subject: str | None = None,
+    branch_id: int | None = None,
     is_active: bool = True,
 ) -> list[Teacher]:
     query = select(Teacher).where(Teacher.is_active == is_active)
@@ -18,6 +19,8 @@ async def get_teachers(
         query = query.where(Teacher.subject == subject)
     if search:
         query = query.where(Teacher.name.contains(search))
+    if branch_id is not None:
+        query = query.where(Teacher.branch_id == branch_id)
     query = query.order_by(Teacher.display_order)
     result = await db.execute(query)
     return result.scalars().all()
