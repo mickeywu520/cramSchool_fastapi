@@ -29,6 +29,7 @@ class StudentResponse(BaseModel):
 class StudentUpdateRequest(BaseModel):
     student_name: str | None = Field(None, max_length=50)
     gender: str | None = None
+    birth_date: date | None = None
     school: str | None = Field(None, max_length=100)
     grade: str | None = Field(None, max_length=20)
     class_name: str | None = None

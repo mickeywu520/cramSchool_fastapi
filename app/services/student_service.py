@@ -52,7 +52,7 @@ async def get_student_response(db: AsyncSession, user_id: int) -> dict:
 
 async def update_student(db: AsyncSession, user_id: int, data: dict) -> dict:
     student = await get_student_by_user_id(db, user_id)
-    for field in ["student_name", "gender", "school", "grade", "class_name", "parent_name", "phone", "parent2_phone", "home_phone", "id_number"]:
+    for field in ["student_name", "gender", "birth_date", "school", "grade", "class_name", "parent_name", "phone", "parent2_phone", "home_phone", "id_number"]:
         if data.get(field) is not None:
             setattr(student, field, data[field])
     if data.get("interested_subjects") is not None:

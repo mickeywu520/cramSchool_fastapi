@@ -1,5 +1,6 @@
 """Communication book service."""
 
+import json
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -7,12 +8,141 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.communication import CommunicationBookEntry
+from app.models.communication_session import (
+    CommunicationCourseSession,
+    CommunicationSessionStudent,
+)
+from app.models.course import Course
 from app.models.homework import HomeworkRecord
 from app.models.parent_feedback import ParentFeedback
 from app.models.reminder import Reminder
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.utils.exceptions import NotFoundException
+
+# ── New: Course-session based queries ──
+
+
+async def get_session_entries(
+    db: AsyncSession, student_id: int, date_from: date | None = None, date_to: date | None = None
+) -> list[dict]:
+    query = (
+        select(CommunicationSessionStudent)
+        .where(CommunicationSessionStudent.student_id == student_id)
+        .options(
+            selectinload(CommunicationSessionStudent.session)
+            .selectinload(CommunicationCourseSession.course)
+            .selectinload(Course.teacher),
+            selectinload(CommunicationSessionStudent.session)
+            .selectinload(CommunicationCourseSession.course),
+        )
+        .order_by(CommunicationSessionStudent.id.desc())
+    )
+    if date_from or date_to:
+        query = query.join(CommunicationCourseSession)
+        if date_from:
+            query = query.where(CommunicationCourseSession.entry_date >= date_from)
+        if date_to:
+            query = query.where(CommunicationCourseSession.entry_date <= date_to)
+
+    result = await db.execute(query)
+    records = result.scalars().all()
+    return [_format_student_entry(r) for r in records]
+
+
+async def get_session_weekly(
+    db: AsyncSession, student_id: int, week_start: date | None = None
+) -> list[dict]:
+    if week_start is None:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+
+    query = (
+        select(CommunicationSessionStudent)
+        .where(CommunicationSessionStudent.student_id == student_id)
+        .options(selectinload(CommunicationSessionStudent.session))
+        .join(CommunicationCourseSession)
+        .where(
+            CommunicationCourseSession.entry_date >= week_start,
+            CommunicationCourseSession.entry_date <= week_end,
+        )
+        .order_by(CommunicationCourseSession.entry_date)
+    )
+    result = await db.execute(query)
+    records = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "entry_date": r.session.entry_date if r.session else None,
+            "is_signed": r.parent_signed,
+        }
+        for r in records
+        if r.session
+    ]
+
+
+async def submit_session_feedback(
+    db: AsyncSession, entry_id: int, student_id: int, is_signed: bool
+) -> CommunicationSessionStudent:
+    result = await db.execute(
+        select(CommunicationSessionStudent)
+        .where(
+            CommunicationSessionStudent.id == entry_id,
+            CommunicationSessionStudent.student_id == student_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise NotFoundException("Communication entry")
+
+    if record.parent_signed:
+        from app.utils.exceptions import ForbiddenException
+        raise ForbiddenException("此聯絡簿已簽署，無法再修改")
+
+    record.parent_signed = is_signed
+    if is_signed:
+        record.parent_signed_at = datetime.now(timezone.utc)
+
+    await db.flush()
+    return record
+
+
+def _format_student_entry(r: CommunicationSessionStudent) -> dict:
+    session = r.session
+    course = session.course if session else None
+    teacher = course.teacher if course else None
+
+    custom_scores = {}
+    if r.custom_scores:
+        try:
+            custom_scores = json.loads(r.custom_scores)
+        except (json.JSONDecodeError, TypeError):
+            custom_scores = {}
+
+    return {
+        "id": r.id,
+        "session_id": session.id if session else 0,
+        "entry_date": session.entry_date if session else None,
+        "course_name": f"{course.grade_level} {course.name}" if course else None,
+        "tutor_name": teacher.name if teacher else None,
+        "class_progress": session.class_progress if session else None,
+        "class_homework": session.class_homework if session else None,
+        "class_exam_scope": session.class_exam_scope if session else None,
+        "class_announcements": session.class_announcements if session else None,
+        "arrival_time": r.arrival_time,
+        "departure_time": r.departure_time,
+        "handout_completed": r.handout_completed,
+        "exam_score": r.exam_score,
+        "custom_scores": custom_scores,
+        "tutoring_attendance": r.tutoring_attendance,
+        "notes": r.notes,
+        "parent_signed": r.parent_signed,
+        "parent_signed_at": r.parent_signed_at,
+    }
+
+
+# ── Old: per-student entry queries (kept for compatibility) ──
 
 
 async def get_entries(
@@ -119,7 +249,6 @@ async def create_entry(db: AsyncSession, data: dict) -> CommunicationBookEntry:
     db.add(entry)
     await db.flush()
 
-    # Add homework records
     for hw in data.get("homework", []):
         raw_due = hw.get("due_date")
         if isinstance(raw_due, str):
@@ -131,7 +260,6 @@ async def create_entry(db: AsyncSession, data: dict) -> CommunicationBookEntry:
             due_date=raw_due,
         ))
 
-    # Add reminders
     for rem in data.get("reminders", []):
         db.add(Reminder(
             communication_book_id=entry.id,
