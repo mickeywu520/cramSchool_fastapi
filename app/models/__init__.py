@@ -18,6 +18,7 @@ from app.models.banner import Banner
 from app.models.refresh_token import RefreshToken
 from app.models.about_card import AboutCard
 from app.models.branch import Branch
+from app.models.communication_session import CommunicationCourseSession, CommunicationSessionStudent
 
 __all__ = [
     "User",
@@ -38,4 +39,6 @@ __all__ = [
     "RefreshToken",
     "AboutCard",
     "Branch",
+    "CommunicationCourseSession",
+    "CommunicationSessionStudent",
 ]

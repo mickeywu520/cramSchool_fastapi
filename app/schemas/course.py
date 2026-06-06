@@ -15,6 +15,9 @@ class CourseResponse(BaseModel):
     schedule: str | None = None
     grade_level: str | None = None
     day_of_week: int | None = None
+    days_of_week: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     start_time: str | None = None
     end_time: str | None = None
     location: str | None = None
@@ -41,6 +44,9 @@ class CourseCreateRequest(BaseModel):
     schedule: str | None = None
     grade_level: str | None = Field(None, max_length=20)
     day_of_week: int | None = None
+    days_of_week: str | None = Field(None, max_length=20)
+    start_date: date | None = None
+    end_date: date | None = None
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)
@@ -64,6 +70,9 @@ class CourseUpdateRequest(BaseModel):
     schedule: str | None = None
     grade_level: str | None = Field(None, max_length=20)
     day_of_week: int | None = None
+    days_of_week: str | None = Field(None, max_length=20)
+    start_date: date | None = None
+    end_date: date | None = None
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)

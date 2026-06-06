@@ -1,5 +1,6 @@
 """Admin router - administrative endpoints."""
 
+import json
 import logging
 from datetime import date
 
@@ -11,6 +12,10 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.branch import Branch
+from app.models.communication_session import (
+    CommunicationCourseSession,
+    CommunicationSessionStudent,
+)
 from app.models.course import Course
 from app.models.enrollment import Enrollment
 from app.models.student import Student
@@ -18,6 +23,14 @@ from app.models.teacher import Teacher
 from app.models.user import User
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.schemas.communication import CommunicationListResponse
+from app.schemas.communication_session import (
+    ExamColumnDef,
+    SessionCreateRequest,
+    SessionListItem,
+    SessionResponse,
+    SessionUpdateRequest,
+    StudentSessionResponse,
+)
 from app.schemas.course import (
     CourseCreateRequest,
     CourseResponse,
@@ -37,6 +50,9 @@ def _format_course(c):
         "teacher_id": c.teacher_id, "teacher_name": c.teacher.name if c.teacher else None,
         "description": c.description, "schedule": c.schedule,
         "grade_level": c.grade_level, "day_of_week": c.day_of_week,
+        "days_of_week": c.days_of_week,
+        "start_date": str(c.start_date) if c.start_date else None,
+        "end_date": str(c.end_date) if c.end_date else None,
         "start_time": c.start_time, "end_time": c.end_time, "location": c.location,
         "branch_id": c.branch_id, "branch_name": c.branch.name if c.branch else None,
         "school_year": c.school_year, "semester": c.semester,
@@ -354,3 +370,260 @@ async def delete_branch(
     await db.delete(branch)
     await db.commit()
     return {"success": True, "message": "分校已刪除"}
+
+
+# ── Communication Course Sessions ──
+
+def _parse_exam_columns(raw: str | None) -> list[ExamColumnDef]:
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+        return [ExamColumnDef(name=i["name"], display_order=i.get("display_order", 0)) for i in items]
+    except (json.JSONDecodeError, KeyError):
+        return []
+
+
+def _tutoring_auto(exam_score: int | None, threshold: int | None) -> bool:
+    if exam_score is not None and threshold is not None:
+        return exam_score < threshold
+    return False
+
+
+@router.get("/communication-sessions", response_model=list[SessionListItem])
+async def list_sessions(
+    course_id: int = Query(..., description="課程 ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(
+        select(CommunicationCourseSession)
+        .where(CommunicationCourseSession.course_id == course_id)
+        .order_by(CommunicationCourseSession.entry_date.desc())
+    )
+    sessions = result.scalars().all()
+    items = []
+    for s in sessions:
+        cnt_result = await db.execute(
+            select(CommunicationSessionStudent)
+            .where(CommunicationSessionStudent.session_id == s.id)
+        )
+        student_count = len(cnt_result.scalars().all())
+        items.append(SessionListItem(
+            id=s.id,
+            course_id=s.course_id,
+            entry_date=s.entry_date,
+            tutoring_threshold=s.tutoring_threshold,
+            student_count=student_count,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+        ))
+    return items
+
+
+@router.post("/communication-sessions", response_model=SessionResponse, status_code=201)
+async def create_session(
+    data: SessionCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    existing = await db.execute(
+        select(CommunicationCourseSession)
+        .where(
+            CommunicationCourseSession.course_id == data.course_id,
+            CommunicationCourseSession.entry_date == data.entry_date,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="此課程在此日期已有聯絡簿記錄")
+
+    exam_cols_json = json.dumps(
+        [{"name": c.name, "display_order": c.display_order} for c in data.exam_columns],
+        ensure_ascii=False,
+    ) if data.exam_columns else "[]"
+
+    session = CommunicationCourseSession(
+        course_id=data.course_id,
+        entry_date=data.entry_date,
+        tutoring_threshold=data.tutoring_threshold,
+        class_progress=data.class_progress,
+        class_homework=data.class_homework,
+        class_exam_scope=data.class_exam_scope,
+        class_announcements=data.class_announcements,
+        exam_columns=exam_cols_json,
+    )
+    db.add(session)
+    await db.flush()
+
+    for sd in data.students:
+        custom_json = json.dumps(sd.custom_scores, ensure_ascii=False) if sd.custom_scores else "{}"
+        student_rec = CommunicationSessionStudent(
+            session_id=session.id,
+            student_id=sd.student_id,
+            arrival_time=sd.arrival_time,
+            departure_time=sd.departure_time,
+            progress=sd.progress,
+            homework=sd.homework,
+            exam_scope=sd.exam_scope,
+            announcements=sd.announcements,
+            handout_completed=sd.handout_completed,
+            exam_score=sd.exam_score,
+            custom_scores=custom_json,
+            tutoring_attendance=_tutoring_auto(sd.exam_score, data.tutoring_threshold),
+            notes=sd.notes,
+        )
+        db.add(student_rec)
+
+    await db.commit()
+    await db.refresh(session)
+    return await _build_session_response(db, session.id)
+
+
+@router.get("/communication-sessions/{session_id}", response_model=SessionResponse)
+async def get_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    return await _build_session_response(db, session_id)
+
+
+@router.put("/communication-sessions/{session_id}", response_model=SessionResponse)
+async def update_session(
+    session_id: int,
+    data: SessionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(
+        select(CommunicationCourseSession)
+        .where(CommunicationCourseSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="找不到此聯絡簿記錄")
+
+    # Update session fields
+    update_fields = [
+        "entry_date", "tutoring_threshold", "class_progress",
+        "class_homework", "class_exam_scope", "class_announcements",
+    ]
+    for field in update_fields:
+        val = getattr(data, field, None)
+        if val is not None:
+            setattr(session, field, val)
+    if data.exam_columns is not None:
+        session.exam_columns = json.dumps(
+            [{"name": c.name, "display_order": c.display_order} for c in data.exam_columns],
+            ensure_ascii=False,
+        )
+
+    # Replace student records
+    if data.students is not None:
+        # Delete old records
+        old = await db.execute(
+            select(CommunicationSessionStudent)
+            .where(CommunicationSessionStudent.session_id == session_id)
+        )
+        for rec in old.scalars().all():
+            await db.delete(rec)
+        await db.flush()
+
+        # Add new records
+        for sd in data.students:
+            custom_json = json.dumps(sd.custom_scores, ensure_ascii=False) if sd.custom_scores else "{}"
+            student_rec = CommunicationSessionStudent(
+                session_id=session.id,
+                student_id=sd.student_id,
+                arrival_time=sd.arrival_time,
+                departure_time=sd.departure_time,
+                progress=sd.progress,
+                homework=sd.homework,
+                exam_scope=sd.exam_scope,
+                announcements=sd.announcements,
+                handout_completed=sd.handout_completed,
+                exam_score=sd.exam_score,
+                custom_scores=custom_json,
+                tutoring_attendance=_tutoring_auto(sd.exam_score, session.tutoring_threshold),
+                notes=sd.notes,
+            )
+            db.add(student_rec)
+
+    await db.commit()
+    return await _build_session_response(db, session_id)
+
+
+@router.delete("/communication-sessions/{session_id}")
+async def delete_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(
+        select(CommunicationCourseSession)
+        .where(CommunicationCourseSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="找不到此聯絡簿記錄")
+    await db.delete(session)
+    await db.commit()
+    return {"success": True, "message": "聯絡簿記錄已刪除"}
+
+
+async def _build_session_response(db: AsyncSession, session_id: int) -> SessionResponse:
+    result = await db.execute(
+        select(CommunicationCourseSession)
+        .where(CommunicationCourseSession.id == session_id)
+        .options(
+            selectinload(CommunicationCourseSession.student_records)
+            .selectinload(CommunicationSessionStudent.student)
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="找不到此聯絡簿記錄")
+
+    exam_cols = _parse_exam_columns(session.exam_columns)
+    students = []
+    for sr in session.student_records:
+        custom_scores = {}
+        if sr.custom_scores:
+            try:
+                custom_scores = json.loads(sr.custom_scores)
+            except json.JSONDecodeError:
+                custom_scores = {}
+        students.append(StudentSessionResponse(
+            id=sr.id,
+            student_id=sr.student_id,
+            student_name=sr.student.student_name if sr.student else "",
+            arrival_time=sr.arrival_time,
+            departure_time=sr.departure_time,
+            progress=sr.progress,
+            homework=sr.homework,
+            exam_scope=sr.exam_scope,
+            announcements=sr.announcements,
+            handout_completed=sr.handout_completed,
+            exam_score=sr.exam_score,
+            custom_scores=custom_scores,
+            tutoring_attendance=sr.tutoring_attendance,
+            notes=sr.notes,
+            parent_feedback=sr.parent_feedback,
+            parent_signed=sr.parent_signed,
+            parent_signed_at=sr.parent_signed_at,
+        ))
+
+    return SessionResponse(
+        id=session.id,
+        course_id=session.course_id,
+        entry_date=session.entry_date,
+        tutoring_threshold=session.tutoring_threshold,
+        class_progress=session.class_progress,
+        class_homework=session.class_homework,
+        class_exam_scope=session.class_exam_scope,
+        class_announcements=session.class_announcements,
+        exam_columns=exam_cols,
+        students=students,
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+    )

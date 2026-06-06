@@ -49,6 +49,9 @@ async def _add_missing_columns():
         "courses": {
             "grade_level": "VARCHAR(20)",
             "day_of_week": "INTEGER",
+            "days_of_week": "VARCHAR(20)",
+            "start_date": "DATE",
+            "end_date": "DATE",
             "start_time": "VARCHAR(10)",
             "end_time": "VARCHAR(10)",
             "location": "VARCHAR(50)",
