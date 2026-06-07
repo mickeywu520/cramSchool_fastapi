@@ -79,8 +79,23 @@ async def _add_missing_columns():
                     pass  # column already exists
 
 
+async def _drop_old_columns():
+    """Drop renamed columns that still exist from old schema."""
+    drops = [
+        ("communication_session_students", "handout_completed"),
+    ]
+    async with engine.begin() as conn:
+        for table, col in drops:
+            try:
+                await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
+                logger.info(f"Dropped column '{table}.{col}'")
+            except Exception:
+                pass  # column may not exist or SQLite version < 3.35.0
+
+
 async def init_db():
     """Create all tables and run migrations. Call on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _add_missing_columns()
+    await _drop_old_columns()
