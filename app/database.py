@@ -65,6 +65,9 @@ async def _add_missing_columns():
         "teachers": {
             "branch_id": "INTEGER REFERENCES branches(id)",
         },
+        "communication_session_students": {
+            "handout_status": "VARCHAR(10)",
+        },
     }
     async with engine.begin() as conn:
         for table, columns in table_columns.items():

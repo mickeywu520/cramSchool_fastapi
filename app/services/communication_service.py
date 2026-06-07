@@ -132,7 +132,7 @@ def _format_student_entry(r: CommunicationSessionStudent) -> dict:
         "class_announcements": session.class_announcements if session else None,
         "arrival_time": r.arrival_time,
         "departure_time": r.departure_time,
-        "handout_completed": r.handout_completed,
+        "handout_status": r.handout_status,
         "exam_score": r.exam_score,
         "custom_scores": custom_scores,
         "tutoring_attendance": r.tutoring_attendance,

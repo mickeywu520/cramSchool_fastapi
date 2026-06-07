@@ -24,7 +24,7 @@ class StudentSessionEntry(BaseModel):
     class_announcements: str | None = None
     arrival_time: str | None = None
     departure_time: str | None = None
-    handout_completed: bool = False
+    handout_status: str | None = None
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
     tutoring_attendance: bool = False

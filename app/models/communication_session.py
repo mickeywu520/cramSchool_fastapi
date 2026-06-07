@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -49,7 +49,7 @@ class CommunicationSessionStudent(Base):
     homework: Mapped[str | None] = mapped_column(Text, nullable=True)
     exam_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     announcements: Mapped[str | None] = mapped_column(Text, nullable=True)
-    handout_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    handout_status: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     exam_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_scores: Mapped[str | None] = mapped_column(Text, nullable=True)
     tutoring_attendance: Mapped[bool] = mapped_column(Boolean, default=False)
