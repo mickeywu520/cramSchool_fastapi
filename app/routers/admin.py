@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -38,6 +38,7 @@ from app.schemas.course import (
     EnrollmentCreateRequest,
     EnrollmentResponse,
 )
+from app.schemas.student import FollowupUpdateRequest, StudentRegistrationResponse
 from app.services import communication_service
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,92 @@ async def list_students(
         }
         for s in students
     ]
+
+
+# ── Student Registrations ──
+
+@router.get("/student-registrations", response_model=list[StudentRegistrationResponse])
+async def list_student_registrations(
+    search: str | None = Query(None, description="姓名關鍵字"),
+    followup_status: str | None = Query(None, description="篩選跟進狀態"),
+    grade: str | None = Query(None, description="篩選年級"),
+    school: str | None = Query(None, description="篩選學校"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    query = (
+        select(Student)
+        .options(selectinload(Student.user))
+        .order_by(Student.created_at.desc())
+    )
+    if search:
+        query = query.where(Student.student_name.contains(search))
+    if followup_status:
+        query = query.where(Student.followup_status == followup_status)
+    if grade:
+        query = query.where(Student.grade == grade)
+    if school:
+        query = query.where(Student.school.contains(school))
+    result = await db.execute(query)
+    students = result.scalars().all()
+    return [
+        _format_registration(s)
+        for s in students
+    ]
+
+
+@router.put("/student-registrations/{student_id}/followup")
+async def update_followup_status(
+    student_id: int,
+    data: FollowupUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="找不到此學生")
+    student.followup_status = data.followup_status
+    if data.followup_status == "離籍":
+        await db.execute(
+            select(Enrollment).where(
+                Enrollment.student_id == student_id,
+                Enrollment.status == "active",
+            )
+        )
+        enrollments_result = await db.execute(
+            select(Enrollment).where(
+                Enrollment.student_id == student_id,
+                Enrollment.status == "active",
+            )
+        )
+        for enroll in enrollments_result.scalars().all():
+            enroll.status = "dropped"
+    await db.commit()
+    return {"success": True, "followup_status": data.followup_status}
+
+
+def _format_registration(s: Student) -> dict:
+    return {
+        "id": s.id,
+        "student_name": s.student_name,
+        "gender": s.gender,
+        "birth_date": s.birth_date,
+        "school": s.school,
+        "grade": s.grade,
+        "class_name": s.class_name,
+        "parent_name": s.parent_name,
+        "parent_title": s.parent_title,
+        "phone": s.phone,
+        "parent2_name": s.parent2_name,
+        "parent2_title": s.parent2_title,
+        "parent2_phone": s.parent2_phone,
+        "home_phone": s.home_phone,
+        "id_number": s.id_number,
+        "followup_status": s.followup_status,
+        "email": s.user.email if s.user else "",
+        "created_at": s.created_at,
+    }
 
 
 # ── Communication Book Entries ──
@@ -464,6 +551,7 @@ async def create_session(
             departure_time=sd.departure_time,
             progress=sd.progress,
             homework=sd.homework,
+            vocab=sd.vocab,
             exam_scope=sd.exam_scope,
             announcements=sd.announcements,
             handout_status=sd.handout_status,
@@ -539,6 +627,7 @@ async def update_session(
                 departure_time=sd.departure_time,
                 progress=sd.progress,
                 homework=sd.homework,
+                vocab=sd.vocab,
                 exam_scope=sd.exam_scope,
                 announcements=sd.announcements,
                 handout_status=sd.handout_status,
@@ -601,6 +690,7 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
             departure_time=sr.departure_time,
             progress=sr.progress,
             homework=sr.homework,
+            vocab=sr.vocab,
             exam_scope=sr.exam_scope,
             announcements=sr.announcements,
             handout_status=sr.handout_status,

@@ -47,6 +47,7 @@ class CommunicationSessionStudent(Base):
     departure_time: Mapped[str | None] = mapped_column(String(10), nullable=True)
     progress: Mapped[str | None] = mapped_column(Text, nullable=True)
     homework: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vocab: Mapped[str | None] = mapped_column(String(10), nullable=True, default="優異")
     exam_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     announcements: Mapped[str | None] = mapped_column(Text, nullable=True)
     handout_status: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)

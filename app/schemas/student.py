@@ -13,12 +13,14 @@ class StudentResponse(BaseModel):
     grade: str
     class_name: str | None = None
     parent_name: str
+    parent_title: str | None = None
     phone: str
+    parent2_name: str | None = None
+    parent2_title: str | None = None
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
     branch_id: int | None = None
-    interested_subjects: list[str] = []
     avatar_url: str | None = None
     student_number: str | None = None
     email: str = ""
@@ -35,11 +37,13 @@ class StudentUpdateRequest(BaseModel):
     class_name: str | None = None
     branch_id: int | None = None
     parent_name: str | None = Field(None, max_length=50)
+    parent_title: str | None = None
     phone: str | None = Field(None, max_length=20)
+    parent2_name: str | None = None
+    parent2_title: str | None = None
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
-    interested_subjects: list[str] | None = None
 
 
 class SubjectProgress(BaseModel):
@@ -74,6 +78,33 @@ class ExamScoreResponse(BaseModel):
     exam_date: date
 
     model_config = {"from_attributes": True}
+
+
+class StudentRegistrationResponse(BaseModel):
+    id: int
+    student_name: str
+    gender: str
+    birth_date: date
+    school: str
+    grade: str
+    class_name: str | None = None
+    parent_name: str
+    parent_title: str | None = None
+    phone: str
+    parent2_name: str | None = None
+    parent2_title: str | None = None
+    parent2_phone: str | None = None
+    home_phone: str | None = None
+    id_number: str | None = None
+    followup_status: str = "待聯繫"
+    email: str = ""
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class FollowupUpdateRequest(BaseModel):
+    followup_status: str = Field(..., pattern=r"^(待聯繫|在籍|離籍)$")
 
 
 class HomeworkSummary(BaseModel):

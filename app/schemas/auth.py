@@ -15,11 +15,13 @@ class RegisterRequest(BaseModel):
     grade: str = Field(min_length=1, max_length=20)
     class_name: str | None = None
     parent_name: str = Field(min_length=1, max_length=50)
+    parent_title: str | None = None
     phone: str = Field(min_length=1, max_length=20)
+    parent2_name: str | None = None
+    parent2_title: str | None = None
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
-    interested_subjects: list[str] = Field(default_factory=list)
 
 
 class LoginRequest(BaseModel):

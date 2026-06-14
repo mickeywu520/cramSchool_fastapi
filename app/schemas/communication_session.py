@@ -15,6 +15,7 @@ class StudentSessionData(BaseModel):
     departure_time: str | None = None
     progress: str | None = None
     homework: str | None = None
+    vocab: str | None = "優異"
     exam_scope: str | None = None
     announcements: str | None = None
     handout_status: str | None = None
@@ -55,6 +56,7 @@ class StudentSessionResponse(BaseModel):
     departure_time: str | None = None
     progress: str | None = None
     homework: str | None = None
+    vocab: str | None = "優異"
     exam_scope: str | None = None
     announcements: str | None = None
     handout_status: str | None = None

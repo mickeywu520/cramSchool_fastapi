@@ -45,6 +45,11 @@ async def _add_missing_columns():
             "parent2_phone": "VARCHAR(20)",
             "home_phone": "VARCHAR(20)",
             "id_number": "VARCHAR(20)",
+            "branch_id": "INTEGER REFERENCES branches(id)",
+            "followup_status": "VARCHAR(20) NOT NULL DEFAULT '待聯繫'",
+            "parent_title": "VARCHAR(10)",
+            "parent2_name": "VARCHAR(50)",
+            "parent2_title": "VARCHAR(10)",
         },
         "courses": {
             "grade_level": "VARCHAR(20)",
@@ -59,14 +64,12 @@ async def _add_missing_columns():
             "school_year": "VARCHAR(10)",
             "semester": "VARCHAR(10)",
         },
-        "students": {
-            "branch_id": "INTEGER REFERENCES branches(id)",
-        },
         "teachers": {
             "branch_id": "INTEGER REFERENCES branches(id)",
         },
         "communication_session_students": {
             "handout_status": "VARCHAR(10)",
+            "vocab": "VARCHAR(10)",
         },
     }
     async with engine.begin() as conn:
