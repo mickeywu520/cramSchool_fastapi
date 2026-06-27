@@ -71,6 +71,8 @@ async def _add_missing_columns():
             "handout_status": "VARCHAR(10)",
             "vocab": "VARCHAR(10)",
             "reschedule_date": "DATE",
+            "homework_material": "VARCHAR(10)",
+            "homework_workbook": "VARCHAR(10)",
         },
     }
     async with engine.begin() as conn:

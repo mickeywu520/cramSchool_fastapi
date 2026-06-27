@@ -51,6 +51,8 @@ class CommunicationSessionStudent(Base):
     exam_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     announcements: Mapped[str | None] = mapped_column(Text, nullable=True)
     handout_status: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
+    homework_material: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
+    homework_workbook: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     exam_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_scores: Mapped[str | None] = mapped_column(Text, nullable=True)
     tutoring_attendance: Mapped[bool] = mapped_column(Boolean, default=False)

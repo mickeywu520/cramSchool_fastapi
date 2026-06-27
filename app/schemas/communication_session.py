@@ -19,6 +19,8 @@ class StudentSessionData(BaseModel):
     exam_scope: str | None = None
     announcements: str | None = None
     handout_status: str | None = None
+    homework_material: str | None = None
+    homework_workbook: str | None = None
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
     tutoring_attendance: bool = False
@@ -61,6 +63,8 @@ class StudentSessionResponse(BaseModel):
     exam_scope: str | None = None
     announcements: str | None = None
     handout_status: str | None = None
+    homework_material: str | None = None
+    homework_workbook: str | None = None
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
     tutoring_attendance: bool = False

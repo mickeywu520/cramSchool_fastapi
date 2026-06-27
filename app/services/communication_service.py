@@ -133,6 +133,8 @@ def _format_student_entry(r: CommunicationSessionStudent) -> dict:
         "arrival_time": r.arrival_time,
         "departure_time": r.departure_time,
         "handout_status": r.handout_status,
+        "homework_material": r.homework_material,
+        "homework_workbook": r.homework_workbook,
         "exam_score": r.exam_score,
         "custom_scores": custom_scores,
         "tutoring_attendance": r.tutoring_attendance,
