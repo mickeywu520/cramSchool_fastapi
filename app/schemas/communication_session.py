@@ -22,6 +22,7 @@ class StudentSessionData(BaseModel):
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
     tutoring_attendance: bool = False
+    reschedule_date: date | None = None
     notes: str | None = None
 
 
@@ -63,6 +64,7 @@ class StudentSessionResponse(BaseModel):
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
     tutoring_attendance: bool = False
+    reschedule_date: date | None = None
     notes: str | None = None
     parent_feedback: str | None = None
     parent_signed: bool = False

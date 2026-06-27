@@ -32,6 +32,7 @@ from app.schemas.communication_session import (
     StudentSessionResponse,
 )
 from app.schemas.course import (
+    BatchCopyEnrollmentsRequest,
     CourseCreateRequest,
     CourseResponse,
     CourseUpdateRequest,
@@ -91,6 +92,7 @@ async def list_students(
             "student_name": s.student_name,
             "grade": s.grade,
             "school": s.school,
+            "followup_status": s.followup_status,
         }
         for s in students
     ]
@@ -110,7 +112,7 @@ async def list_student_registrations(
     query = (
         select(Student)
         .options(selectinload(Student.user))
-        .order_by(Student.created_at.desc())
+        .order_by(Student.created_at.asc())
     )
     if search:
         query = query.where(Student.student_name.contains(search))
@@ -367,6 +369,51 @@ async def delete_enrollment(
     return {"success": True, "message": "已取消選課"}
 
 
+@router.post("/enrollments/batch-copy")
+async def batch_copy_enrollments(
+    data: BatchCopyEnrollmentsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    source_result = await db.execute(
+        select(Enrollment)
+        .where(
+            Enrollment.course_id == data.source_course_id,
+            Enrollment.status == "active",
+        )
+        .options(selectinload(Enrollment.student))
+    )
+    source_enrollments = source_result.scalars().all()
+    source_course_result = await db.execute(
+        select(Course).where(Course.id == data.target_course_id)
+    )
+    target_course = source_course_result.scalar_one_or_none()
+    if not target_course:
+        raise HTTPException(status_code=404, detail="目標課程不存在")
+
+    existing_result = await db.execute(
+        select(Enrollment).where(
+            Enrollment.course_id == data.target_course_id,
+            Enrollment.status == "active",
+        )
+    )
+    existing_ids = {e.student_id for e in existing_result.scalars().all()}
+
+    added = 0
+    for se in source_enrollments:
+        if se.student_id not in existing_ids:
+            enrollment = Enrollment(
+                student_id=se.student_id,
+                course_id=data.target_course_id,
+                status="active",
+            )
+            db.add(enrollment)
+            added += 1
+
+    await db.commit()
+    return {"success": True, "message": f"已新增 {added} 位學生", "added": added}
+
+
 # ── Utility endpoints for dropdowns ──
 
 @router.get("/course-filters")
@@ -558,6 +605,7 @@ async def create_session(
             exam_score=sd.exam_score,
             custom_scores=custom_json,
             tutoring_attendance=_tutoring_auto(sd.exam_score, data.tutoring_threshold),
+            reschedule_date=sd.reschedule_date,
             notes=sd.notes,
         )
         db.add(student_rec)
@@ -630,11 +678,12 @@ async def update_session(
                 vocab=sd.vocab,
                 exam_scope=sd.exam_scope,
                 announcements=sd.announcements,
-                handout_status=sd.handout_status,
-                exam_score=sd.exam_score,
-                custom_scores=custom_json,
-                tutoring_attendance=_tutoring_auto(sd.exam_score, session.tutoring_threshold),
-                notes=sd.notes,
+            handout_status=sd.handout_status,
+            exam_score=sd.exam_score,
+            custom_scores=custom_json,
+            tutoring_attendance=_tutoring_auto(sd.exam_score, session.tutoring_threshold),
+            reschedule_date=sd.reschedule_date,
+            notes=sd.notes,
             )
             db.add(student_rec)
 
@@ -697,6 +746,7 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
             exam_score=sr.exam_score,
             custom_scores=custom_scores,
             tutoring_attendance=sr.tutoring_attendance,
+            reschedule_date=sr.reschedule_date,
             notes=sr.notes,
             parent_feedback=sr.parent_feedback,
             parent_signed=sr.parent_signed,

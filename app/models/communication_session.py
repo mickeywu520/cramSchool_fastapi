@@ -54,6 +54,7 @@ class CommunicationSessionStudent(Base):
     exam_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_scores: Mapped[str | None] = mapped_column(Text, nullable=True)
     tutoring_attendance: Mapped[bool] = mapped_column(Boolean, default=False)
+    reschedule_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_signed: Mapped[bool] = mapped_column(Boolean, default=False)

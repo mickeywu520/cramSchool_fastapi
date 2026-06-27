@@ -107,3 +107,8 @@ class EnrollmentResponse(BaseModel):
 class EnrollmentCreateRequest(BaseModel):
     student_id: int
     course_id: int
+
+
+class BatchCopyEnrollmentsRequest(BaseModel):
+    source_course_id: int
+    target_course_id: int

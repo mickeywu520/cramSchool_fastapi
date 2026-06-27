@@ -70,6 +70,7 @@ async def _add_missing_columns():
         "communication_session_students": {
             "handout_status": "VARCHAR(10)",
             "vocab": "VARCHAR(10)",
+            "reschedule_date": "DATE",
         },
     }
     async with engine.begin() as conn:
