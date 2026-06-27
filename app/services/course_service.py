@@ -17,6 +17,7 @@ async def get_courses(
     grade_level: str | None = None,
     is_early_bird: bool | None = None,
     branch_id: int | None = None,
+    is_active: bool | None = None,
 ) -> list[Course]:
     query = select(Course).options(selectinload(Course.teacher), selectinload(Course.branch))
     if category:
@@ -29,6 +30,8 @@ async def get_courses(
         query = query.where(Course.is_early_bird == is_early_bird)
     if branch_id is not None:
         query = query.where(Course.branch_id == branch_id)
+    if is_active is not None:
+        query = query.where(Course.is_active == is_active)
     query = query.order_by(Course.display_order)
     result = await db.execute(query)
     return result.scalars().all()

@@ -39,7 +39,8 @@ async def list_courses(
     db: AsyncSession = Depends(get_db),
 ):
     courses = await course_service.get_courses(
-        db, category=category, subject=subject, grade_level=grade_level, is_early_bird=is_early_bird, branch_id=branch_id
+        db, category=category, subject=subject, grade_level=grade_level,
+        is_early_bird=is_early_bird, branch_id=branch_id, is_active=True,
     )
     result = [_format_course(c) for c in courses]
     return {"total": len(result), "courses": result}
