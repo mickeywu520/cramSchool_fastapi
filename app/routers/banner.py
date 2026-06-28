@@ -1,6 +1,6 @@
 """Banner router with public listing and admin management."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,10 +20,11 @@ MAX_BANNERS = 6
 
 
 @router.get("", response_model=list[BannerResponse])
-async def list_banners(db: AsyncSession = Depends(get_db)):
+async def list_banners(response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Banner).where(Banner.is_active == True).order_by(Banner.display_order)
     )
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
     return result.scalars().all()
 
 

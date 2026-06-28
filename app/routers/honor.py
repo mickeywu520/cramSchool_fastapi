@@ -1,5 +1,5 @@
 """Honor roll router with public listing and admin management."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -46,6 +46,7 @@ class HonorAdminResponse(BaseModel):
 
 @router.get("", response_model=HonorListResponse)
 async def list_honors(
+    response: Response,
     year: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -54,14 +55,16 @@ async def list_honors(
         query = query.where(Honor.year == year)
     result = await db.execute(query)
     honors = result.scalars().all()
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
     return {"total": len(honors), "honors": honors}
 
 
 @router.get("/years", response_model=list[int])
-async def get_honor_years(db: AsyncSession = Depends(get_db)):
+async def get_honor_years(response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Honor.year).distinct().order_by(Honor.year.desc())
     )
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
     return [row[0] for row in result.all()]
 
 

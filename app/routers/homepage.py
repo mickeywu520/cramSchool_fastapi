@@ -1,6 +1,6 @@
 """Homepage router - aggregated data for landing page."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/homepage", tags=["Homepage"])
 
 
 @router.get("")
-async def get_homepage_data(db: AsyncSession = Depends(get_db)):
+async def get_homepage_data(response: Response, db: AsyncSession = Depends(get_db)):
     # Banners (active only, ordered)
     banner_result = await db.execute(
         select(Banner).where(Banner.is_active == True).order_by(Banner.display_order)
@@ -134,3 +134,5 @@ async def get_homepage_data(db: AsyncSession = Depends(get_db)):
             for c in early_bird_courses
         ],
     }
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    return data

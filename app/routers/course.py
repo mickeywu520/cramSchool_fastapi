@@ -1,6 +1,6 @@
 """Course router - course listing, enrollment."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -31,6 +31,7 @@ def _format_course(c):
 
 @router.get("", response_model=CourseListResponse)
 async def list_courses(
+    response: Response,
     category: str | None = Query(None),
     subject: str | None = Query(None),
     grade_level: str | None = Query(None),
@@ -43,12 +44,14 @@ async def list_courses(
         is_early_bird=is_early_bird, branch_id=branch_id, is_active=True,
     )
     result = [_format_course(c) for c in courses]
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
     return {"total": len(result), "courses": result}
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
-async def get_course(course_id: int, db: AsyncSession = Depends(get_db)):
+async def get_course(response: Response, course_id: int, db: AsyncSession = Depends(get_db)):
     c = await course_service.get_course_by_id(db, course_id)
+    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
     return _format_course(c)
 
 

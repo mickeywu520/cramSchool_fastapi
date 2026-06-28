@@ -1,6 +1,6 @@
 """Teacher router with public listing and admin management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,22 +64,26 @@ class TeacherListResponse(BaseModel):
 
 @router.get("", response_model=TeacherListResponse)
 async def list_teachers(
+    response: Response,
     search: str | None = Query(None),
     subject: str | None = Query(None),
     branch_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     teachers = await ts.get_teachers(db, search=search, subject=subject, branch_id=branch_id)
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
     return {"total": len(teachers), "teachers": teachers}
 
 
 @router.get("/featured")
-async def featured_teachers(db: AsyncSession = Depends(get_db)):
+async def featured_teachers(response: Response, db: AsyncSession = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
     return await ts.get_featured_teachers(db)
 
 
 @router.get("/{teacher_id}")
-async def get_teacher(teacher_id: int, db: AsyncSession = Depends(get_db)):
+async def get_teacher(response: Response, teacher_id: int, db: AsyncSession = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
     return await ts.get_teacher_by_id(db, teacher_id)
 
 
