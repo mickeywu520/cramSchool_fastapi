@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.middleware.auth_middleware import require_teacher_or_admin
+from app.middleware.auth_middleware import require_admin, require_teacher_or_admin
+from app.utils.security import hash_password
 from app.models.branch import Branch
 from app.models.communication_session import (
     CommunicationCourseSession,
@@ -21,6 +22,12 @@ from app.models.enrollment import Enrollment
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User
+from app.schemas.admin_user import (
+    AdminUserCreateRequest,
+    AdminUserResetPasswordRequest,
+    AdminUserResponse,
+    AdminUserUpdateRequest,
+)
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.schemas.communication import CommunicationListResponse
 from app.schemas.communication_session import (
@@ -794,3 +801,113 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
         created_at=session.created_at,
         updated_at=session.updated_at,
     )
+
+
+# ── Admin User Management ──
+
+ADMIN_ROLES = {"admin", "maintainer", "user"}
+
+
+@router.get("/users", response_model=list[AdminUserResponse])
+async def list_admin_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """List all backend management accounts (admin / maintainer / user)."""
+    result = await db.execute(
+        select(User).where(User.role.in_(ADMIN_ROLES)).order_by(User.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/users", response_model=AdminUserResponse, status_code=201)
+async def create_admin_user(
+    data: AdminUserCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new backend management account."""
+    existing = await db.execute(select(User).where(User.email == data.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="此 Email 已被使用")
+
+    user = User(
+        email=data.email,
+        password_hash=hash_password(data.password),
+        role=data.role,
+        auth_provider="email",
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.put("/users/{user_id}", response_model=AdminUserResponse)
+async def update_admin_user(
+    user_id: int,
+    data: AdminUserUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update an admin user's role or active status."""
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能修改自己的帳號")
+
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.role.in_(ADMIN_ROLES))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="找不到此帳號")
+
+    if data.role is not None:
+        user.role = data.role
+    if data.is_active is not None:
+        user.is_active = data.is_active
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.delete("/users/{user_id}")
+async def delete_admin_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete an admin user account."""
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能刪除自己的帳號")
+
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.role.in_(ADMIN_ROLES))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="找不到此帳號")
+
+    await db.delete(user)
+    await db.commit()
+    return {"success": True, "message": "帳號已刪除"}
+
+
+@router.put("/users/{user_id}/reset-password")
+async def reset_admin_user_password(
+    user_id: int,
+    data: AdminUserResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Reset password for an admin user."""
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.role.in_(ADMIN_ROLES))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="找不到此帳號")
+
+    user.password_hash = hash_password(data.password)
+    await db.commit()
+    return {"success": True, "message": "密碼已重設"}
