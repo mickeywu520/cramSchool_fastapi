@@ -26,6 +26,8 @@ class Settings(BaseSettings):
         "https://cramschool-b4d52.firebaseapp.com",
         "https://www.gateway2go.bond",
         "https://api.gateway2go.bond",
+        "https://www.hsedu.com.tw",
+        "https://api.hsedu.com.tw",
     ]
 
     # Upload
