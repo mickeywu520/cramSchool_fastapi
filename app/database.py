@@ -63,6 +63,7 @@ async def _add_missing_columns():
             "branch_id": "INTEGER REFERENCES branches(id)",
             "school_year": "VARCHAR(10)",
             "semester": "VARCHAR(10)",
+            "is_teaching": "BOOLEAN NOT NULL DEFAULT 1",
         },
         "teachers": {
             "branch_id": "INTEGER REFERENCES branches(id)",

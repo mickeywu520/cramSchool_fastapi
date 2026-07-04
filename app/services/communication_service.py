@@ -3,7 +3,7 @@
 import json
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +29,9 @@ async def get_session_entries(
     query = (
         select(CommunicationSessionStudent)
         .where(CommunicationSessionStudent.student_id == student_id)
+        .join(CommunicationSessionStudent.session)
+        .join(CommunicationCourseSession.course)
+        .where(Course.is_teaching == True)
         .options(
             selectinload(CommunicationSessionStudent.session)
             .selectinload(CommunicationCourseSession.course)
@@ -39,11 +42,23 @@ async def get_session_entries(
         .order_by(CommunicationSessionStudent.id.desc())
     )
     if date_from or date_to:
-        query = query.join(CommunicationCourseSession)
+        conditions = []
         if date_from:
-            query = query.where(CommunicationCourseSession.entry_date >= date_from)
+            conditions.append(
+                or_(
+                    CommunicationCourseSession.entry_date >= date_from,
+                    CommunicationSessionStudent.reschedule_date >= date_from,
+                )
+            )
         if date_to:
-            query = query.where(CommunicationCourseSession.entry_date <= date_to)
+            conditions.append(
+                or_(
+                    CommunicationCourseSession.entry_date <= date_to,
+                    CommunicationSessionStudent.reschedule_date <= date_to,
+                )
+            )
+        for condition in conditions:
+            query = query.where(condition)
 
     result = await db.execute(query)
     records = result.scalars().all()
@@ -63,9 +78,13 @@ async def get_session_weekly(
         .where(CommunicationSessionStudent.student_id == student_id)
         .options(selectinload(CommunicationSessionStudent.session))
         .join(CommunicationCourseSession)
+        .join(CommunicationCourseSession.course)
         .where(
-            CommunicationCourseSession.entry_date >= week_start,
-            CommunicationCourseSession.entry_date <= week_end,
+            or_(
+                CommunicationCourseSession.entry_date.between(week_start, week_end),
+                CommunicationSessionStudent.reschedule_date.between(week_start, week_end),
+            ),
+            Course.is_teaching == True,
         )
         .order_by(CommunicationCourseSession.entry_date)
     )
@@ -123,7 +142,7 @@ def _format_student_entry(r: CommunicationSessionStudent) -> dict:
     return {
         "id": r.id,
         "session_id": session.id if session else 0,
-        "entry_date": session.entry_date if session else None,
+        "entry_date": r.reschedule_date if r.reschedule_date else (session.entry_date if session else None),
         "course_name": f"{course.grade_level} {course.name}" if course else None,
         "tutor_name": teacher.name if teacher else None,
         "class_progress": session.class_progress if session else None,

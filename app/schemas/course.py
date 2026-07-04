@@ -30,6 +30,7 @@ class CourseResponse(BaseModel):
     is_early_bird: bool = False
     early_bird_discount: str | None = None
     is_active: bool = True
+    is_teaching: bool = True
     display_order: int = 0
 
     model_config = {"from_attributes": True}
@@ -58,6 +59,7 @@ class CourseCreateRequest(BaseModel):
     is_early_bird: bool = False
     early_bird_discount: str | None = None
     is_active: bool = True
+    is_teaching: bool = True
     display_order: int = 0
 
 
@@ -84,6 +86,7 @@ class CourseUpdateRequest(BaseModel):
     is_early_bird: bool | None = None
     early_bird_discount: str | None = None
     is_active: bool | None = None
+    is_teaching: bool | None = None
     display_order: int | None = None
 
 
@@ -96,6 +99,7 @@ class EnrollmentResponse(BaseModel):
     id: int
     student_id: int
     student_name: str
+    school: str = ""
     course_id: int
     course_name: str
     status: str

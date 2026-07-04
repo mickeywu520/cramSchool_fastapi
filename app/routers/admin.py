@@ -60,7 +60,7 @@ def _format_course(c):
         "school_year": c.school_year, "semester": c.semester,
         "price": c.price, "max_students": c.max_students,
         "is_early_bird": c.is_early_bird, "early_bird_discount": c.early_bird_discount,
-        "is_active": c.is_active, "display_order": c.display_order,
+        "is_active": c.is_active, "is_teaching": c.is_teaching, "display_order": c.display_order,
     }
 
 
@@ -83,7 +83,7 @@ async def list_students(
         query = query.join(Enrollment).where(
             Enrollment.course_id == course_id, Enrollment.status == "active"
         )
-    query = query.order_by(Student.student_name)
+    query = query.order_by(Student.created_at.asc())
     result = await db.execute(query)
     students = result.scalars().all()
     return [
@@ -112,7 +112,7 @@ async def list_student_registrations(
     query = (
         select(Student)
         .options(selectinload(Student.user))
-        .order_by(Student.created_at.asc())
+        .order_by(Student.created_at.desc())
     )
     if search:
         query = query.where(Student.student_name.contains(search))
@@ -236,7 +236,7 @@ async def list_courses(
         query = query.where(Course.subject == subject)
     if teacher_id:
         query = query.where(Course.teacher_id == teacher_id)
-    query = query.order_by(Course.category, Course.grade_level, Course.day_of_week, Course.display_order)
+    query = query.order_by(Course.created_at.desc())
     result = await db.execute(query)
     courses = result.scalars().all()
     return [_format_course(c) for c in courses]
@@ -294,6 +294,26 @@ async def delete_course(
     return {"success": True, "message": "課程已刪除"}
 
 
+@router.post("/courses/batch-toggle")
+async def batch_toggle_courses(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    course_ids = data.get("course_ids", [])
+    is_teaching = data.get("is_teaching", True)
+    if not course_ids:
+        raise HTTPException(status_code=400, detail="請選擇至少一門課程")
+    result = await db.execute(
+        select(Course).where(Course.id.in_(course_ids))
+    )
+    courses = result.scalars().all()
+    for c in courses:
+        c.is_teaching = is_teaching
+    await db.flush()
+    return {"success": True, "message": f"已{'開課' if is_teaching else '停課'} {len(courses)} 門課程"}
+
+
 # ── Enrollment Management ──
 
 @router.get("/enrollments", response_model=list[EnrollmentResponse])
@@ -319,6 +339,7 @@ async def list_enrollments(
             "id": e.id,
             "student_id": e.student_id,
             "student_name": e.student.student_name if e.student else "",
+            "school": e.student.school if e.student else "",
             "course_id": e.course_id,
             "course_name": e.course.name if e.course else "",
             "status": e.status,
