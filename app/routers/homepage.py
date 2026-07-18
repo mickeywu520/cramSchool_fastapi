@@ -76,6 +76,7 @@ async def get_homepage_data(response: Response, db: AsyncSession = Depends(get_d
             {
                 "id": b.id,
                 "title": b.title,
+                "subtitle": b.subtitle,
                 "image_url": b.image_url,
                 "link_url": b.link_url,
             }

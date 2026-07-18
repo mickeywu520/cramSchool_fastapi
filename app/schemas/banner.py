@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class BannerResponse(BaseModel):
     id: int
     title: str | None = None
+    subtitle: str | None = None
     image_url: str
     link_url: str | None = None
     display_order: int = 0
@@ -16,6 +17,7 @@ class BannerResponse(BaseModel):
 
 class BannerCreateRequest(BaseModel):
     title: str | None = None
+    subtitle: str | None = None
     image_url: str
     link_url: str | None = None
     display_order: int = 0
@@ -24,6 +26,7 @@ class BannerCreateRequest(BaseModel):
 
 class BannerUpdateRequest(BaseModel):
     title: str | None = None
+    subtitle: str | None = None
     image_url: str | None = None
     link_url: str | None = None
     display_order: int | None = None

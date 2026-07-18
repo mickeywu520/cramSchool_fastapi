@@ -75,6 +75,9 @@ async def _add_missing_columns():
             "homework_material": "VARCHAR(10)",
             "homework_workbook": "VARCHAR(10)",
         },
+        "banners": {
+            "subtitle": "VARCHAR(200)",
+        },
     }
     async with engine.begin() as conn:
         for table, columns in table_columns.items():
