@@ -46,7 +46,7 @@ from app.schemas.course import (
     EnrollmentCreateRequest,
     EnrollmentResponse,
 )
-from app.schemas.student import FollowupUpdateRequest, StudentRegistrationResponse
+from app.schemas.student import FollowupUpdateRequest, StudentRegistrationResponse, StudentRegistrationUpdateRequest
 from app.services import communication_service
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,7 @@ async def list_students(
             "grade": s.grade,
             "school": s.school,
             "followup_status": s.followup_status,
+            "remark": s.remark,
         }
         for s in students
     ]
@@ -168,6 +169,24 @@ async def update_followup_status(
     return {"success": True, "followup_status": data.followup_status}
 
 
+@router.put("/student-registrations/{student_id}")
+async def update_student_registration(
+    student_id: int,
+    data: StudentRegistrationUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="找不到此學生")
+    update_data = data.model_dump(exclude_none=True)
+    for key, value in update_data.items():
+        setattr(student, key, value)
+    await db.commit()
+    return {"success": True, "message": "學生資料已更新"}
+
+
 def _format_registration(s: Student) -> dict:
     return {
         "id": s.id,
@@ -186,6 +205,7 @@ def _format_registration(s: Student) -> dict:
         "home_phone": s.home_phone,
         "id_number": s.id_number,
         "followup_status": s.followup_status,
+        "remark": s.remark,
         "email": s.user.email if s.user else "",
         "created_at": s.created_at,
     }
@@ -266,6 +286,25 @@ async def create_course(
     return _format_course(result.scalar_one())
 
 
+@router.put("/courses/reorder")
+async def reorder_courses(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    order = data.get("order", [])
+    if not order:
+        raise HTTPException(status_code=400, detail="排序資料不得為空")
+    result = await db.execute(select(Course).where(Course.id.in_(order)))
+    courses = {c.id: c for c in result.scalars().all()}
+    for idx, course_id in enumerate(order):
+        course = courses.get(course_id)
+        if course:
+            course.display_order = idx
+    await db.flush()
+    return {"success": True, "message": "排序已更新"}
+
+
 @router.put("/courses/{course_id}", response_model=CourseResponse)
 async def update_course(
     course_id: int,
@@ -281,6 +320,8 @@ async def update_course(
         raise HTTPException(status_code=404, detail="Course not found")
     for key, val in data.model_dump(exclude_none=True).items():
         setattr(course, key, val)
+    if course.is_teaching is False:
+        course.is_active = False
     await db.flush()
     await db.refresh(course)
     return _format_course(course)
@@ -317,6 +358,8 @@ async def batch_toggle_courses(
     courses = result.scalars().all()
     for c in courses:
         c.is_teaching = is_teaching
+        if not is_teaching:
+            c.is_active = False
     await db.flush()
     return {"success": True, "message": f"已{'開課' if is_teaching else '停課'} {len(courses)} 門課程"}
 
@@ -347,6 +390,7 @@ async def list_enrollments(
             "student_id": e.student_id,
             "student_name": e.student.student_name if e.student else "",
             "school": e.student.school if e.student else "",
+            "remark": e.student.remark if e.student else None,
             "course_id": e.course_id,
             "course_name": e.course.name if e.course else "",
             "status": e.status,

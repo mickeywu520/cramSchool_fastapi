@@ -12,9 +12,11 @@ async def get_teachers(
     search: str | None = None,
     subject: str | None = None,
     branch_id: int | None = None,
-    is_active: bool = True,
+    is_active: bool | None = True,
 ) -> list[Teacher]:
-    query = select(Teacher).where(Teacher.is_active == is_active)
+    query = select(Teacher)
+    if is_active is not None:
+        query = query.where(Teacher.is_active == is_active)
     if subject:
         query = query.where(Teacher.subject == subject)
     if search:

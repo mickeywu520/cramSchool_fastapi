@@ -66,6 +66,21 @@ async def create_about_card(
     return card
 
 
+@router.put("/reorder")
+async def reorder_about_cards(
+    data: AboutCardReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    for idx, card_id in enumerate(data.order):
+        result = await db.execute(select(AboutCard).where(AboutCard.id == card_id))
+        card = result.scalar_one_or_none()
+        if card:
+            card.display_order = idx
+    await db.commit()
+    return {"success": True, "message": "排序已更新"}
+
+
 @router.put("/{card_id}", response_model=AboutCardResponse)
 async def update_about_card(
     card_id: int,
@@ -83,21 +98,6 @@ async def update_about_card(
     await db.commit()
     await db.refresh(card)
     return card
-
-
-@router.put("/reorder")
-async def reorder_about_cards(
-    data: AboutCardReorderRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin),
-):
-    for idx, card_id in enumerate(data.order):
-        result = await db.execute(select(AboutCard).where(AboutCard.id == card_id))
-        card = result.scalar_one_or_none()
-        if card:
-            card.display_order = idx
-    await db.commit()
-    return {"success": True, "message": "排序已更新"}
 
 
 @router.delete("/{card_id}")

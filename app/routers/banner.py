@@ -63,6 +63,21 @@ async def create_banner(
     return banner
 
 
+@router.put("/reorder")
+async def reorder_banners(
+    data: BannerReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    for idx, banner_id in enumerate(data.order):
+        result = await db.execute(select(Banner).where(Banner.id == banner_id))
+        banner = result.scalar_one_or_none()
+        if banner:
+            banner.display_order = idx
+    await db.commit()
+    return {"success": True, "message": "排序已更新"}
+
+
 @router.put("/{banner_id}", response_model=BannerResponse)
 async def update_banner(
     banner_id: int,
@@ -80,21 +95,6 @@ async def update_banner(
     await db.commit()
     await db.refresh(banner)
     return banner
-
-
-@router.put("/reorder")
-async def reorder_banners(
-    data: BannerReorderRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin),
-):
-    for idx, banner_id in enumerate(data.order):
-        result = await db.execute(select(Banner).where(Banner.id == banner_id))
-        banner = result.scalar_one_or_none()
-        if banner:
-            banner.display_order = idx
-    await db.commit()
-    return {"success": True, "message": "排序已更新"}
 
 
 @router.delete("/{banner_id}")

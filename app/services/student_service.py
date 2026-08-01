@@ -113,11 +113,16 @@ async def get_my_courses(db: AsyncSession, user_id: int) -> list[dict]:
         course = enrollment.course
         courses.append({
             "id": course.id,
-            "name": course.name,
+            "name": course.name,              # NOTE: key is "name", NOT "course_name"
             "subject": course.subject,
-            "category": course.category,
+            "category": course.category,       # 學部
             "schedule": course.schedule,
             "teacher_name": course.teacher.name if course.teacher else None,
+            "grade_level": course.grade_level,
+            "location": course.location,
+            "days_of_week": course.days_of_week,
+            "start_time": course.start_time,
+            "end_time": course.end_time,
         })
     return courses
 

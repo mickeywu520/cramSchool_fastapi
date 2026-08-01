@@ -50,6 +50,7 @@ async def _add_missing_columns():
             "parent_title": "VARCHAR(10)",
             "parent2_name": "VARCHAR(50)",
             "parent2_title": "VARCHAR(10)",
+            "remark": "TEXT",
         },
         "courses": {
             "grade_level": "VARCHAR(20)",

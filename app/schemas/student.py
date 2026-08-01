@@ -23,6 +23,7 @@ class StudentResponse(BaseModel):
     branch_id: int | None = None
     avatar_url: str | None = None
     student_number: str | None = None
+    remark: str | None = None
     email: str = ""
 
     model_config = {"from_attributes": True}
@@ -44,6 +45,7 @@ class StudentUpdateRequest(BaseModel):
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
+    branch_id: int | None = None
 
 
 class SubjectProgress(BaseModel):
@@ -65,6 +67,11 @@ class CourseSummary(BaseModel):
     category: str
     schedule: str | None = None
     teacher_name: str | None = None
+    grade_level: str | None = None
+    location: str | None = None
+    days_of_week: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -97,6 +104,7 @@ class StudentRegistrationResponse(BaseModel):
     home_phone: str | None = None
     id_number: str | None = None
     followup_status: str = "待聯繫"
+    remark: str | None = None
     email: str = ""
     created_at: datetime | None = None
 
@@ -105,6 +113,24 @@ class StudentRegistrationResponse(BaseModel):
 
 class FollowupUpdateRequest(BaseModel):
     followup_status: str = Field(..., pattern=r"^(待聯繫|在籍|離籍)$")
+
+
+class StudentRegistrationUpdateRequest(BaseModel):
+    student_name: str | None = Field(None, max_length=50)
+    gender: str | None = None
+    birth_date: date | None = None
+    school: str | None = Field(None, max_length=100)
+    grade: str | None = Field(None, max_length=20)
+    class_name: str | None = None
+    parent_name: str | None = Field(None, max_length=50)
+    parent_title: str | None = None
+    phone: str | None = Field(None, max_length=20)
+    parent2_name: str | None = None
+    parent2_title: str | None = None
+    parent2_phone: str | None = None
+    home_phone: str | None = None
+    id_number: str | None = None
+    remark: str | None = None
 
 
 class HomeworkSummary(BaseModel):

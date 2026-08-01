@@ -68,22 +68,29 @@ async def list_teachers(
     search: str | None = Query(None),
     subject: str | None = Query(None),
     branch_id: int | None = Query(None),
+    include_inactive: bool = Query(False, description="管理端顯示包含隱藏師資"),
     db: AsyncSession = Depends(get_db),
 ):
-    teachers = await ts.get_teachers(db, search=search, subject=subject, branch_id=branch_id)
-    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    teachers = await ts.get_teachers(
+        db, search=search, subject=subject, branch_id=branch_id,
+        is_active=None if include_inactive else True,
+    )
+    if include_inactive:
+        response.headers["Cache-Control"] = "no-store"
+    else:
+        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
     return {"total": len(teachers), "teachers": teachers}
 
 
 @router.get("/featured")
 async def featured_teachers(response: Response, db: AsyncSession = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
     return await ts.get_featured_teachers(db)
 
 
 @router.get("/{teacher_id}")
 async def get_teacher(response: Response, teacher_id: int, db: AsyncSession = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
     return await ts.get_teacher_by_id(db, teacher_id)
 
 
