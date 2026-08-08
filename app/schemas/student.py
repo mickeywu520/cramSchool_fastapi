@@ -69,6 +69,9 @@ class CourseSummary(BaseModel):
     teacher_name: str | None = None
     grade_level: str | None = None
     location: str | None = None
+    branch_name: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     days_of_week: str | None = None
     start_time: str | None = None
     end_time: str | None = None
@@ -141,3 +144,17 @@ class HomeworkSummary(BaseModel):
     is_completed: bool
 
     model_config = {"from_attributes": True}
+
+
+class ScorePoint(BaseModel):
+    date: str
+    scores: dict[str, int]
+    average: float
+
+
+class CourseScoreHistory(BaseModel):
+    course_id: int
+    course_name: str
+    subject: str
+    points: list[ScorePoint]
+    average: float | None = None

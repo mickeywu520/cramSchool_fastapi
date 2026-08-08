@@ -24,7 +24,6 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"success": True, "message": "註冊成功", "data": {"user_id": user.id, "student_id": student.id}}
 
-
 @router.post("/login", response_model=LoginResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await auth_service.login_user(db, data.email, data.password)

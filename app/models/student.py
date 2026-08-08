@@ -12,7 +12,8 @@ class Student(Base):
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), unique=True, nullable=True)
+    parent_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     student_name: Mapped[str] = mapped_column(String(50), nullable=False)
     gender: Mapped[str] = mapped_column(String(10), nullable=False)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -39,7 +40,8 @@ class Student(Base):
     )
 
     # Relationships
-    user = relationship("User", back_populates="student")
+    user = relationship("User", back_populates="student", foreign_keys=[user_id])
+    parent_user = relationship("User", foreign_keys=[parent_user_id])
     enrollments = relationship("Enrollment", back_populates="student")
     leave_applications = relationship("LeaveApplication", back_populates="student")
     makeup_classes = relationship("MakeupClass", back_populates="student")

@@ -4,7 +4,6 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.database import Base
 
 
@@ -12,7 +11,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="student")
     auth_provider: Mapped[str] = mapped_column(String(20), default="email")
@@ -25,6 +24,6 @@ class User(Base):
     )
 
     # Relationships
-    student = relationship("Student", back_populates="user", uselist=False)
+    student = relationship("Student", back_populates="user", uselist=False, foreign_keys="Student.user_id")
     teacher = relationship("Teacher", back_populates="user", uselist=False)
     refresh_tokens = relationship("RefreshToken", back_populates="user")

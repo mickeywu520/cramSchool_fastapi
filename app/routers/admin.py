@@ -5,7 +5,7 @@ import logging
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,8 @@ from app.models.communication_session import (
 )
 from app.models.course import Course
 from app.models.enrollment import Enrollment
+from app.models.leave import LeaveApplication
+from app.models.makeup import MakeupClass
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User
@@ -63,6 +65,11 @@ def _format_course(c):
         "start_date": str(c.start_date) if c.start_date else None,
         "end_date": str(c.end_date) if c.end_date else None,
         "start_time": c.start_time, "end_time": c.end_time, "location": c.location,
+        "tutoring_day_of_week": c.tutoring_day_of_week,
+        "tutoring_days_of_week": c.tutoring_days_of_week,
+        "tutoring_start_time": c.tutoring_start_time,
+        "tutoring_end_time": c.tutoring_end_time,
+        "tutoring_location": c.tutoring_location,
         "branch_id": c.branch_id, "branch_name": c.branch.name if c.branch else None,
         "school_year": c.school_year, "semester": c.semester,
         "price": c.price, "max_students": c.max_students,
@@ -150,13 +157,9 @@ async def update_followup_status(
     if not student:
         raise HTTPException(status_code=404, detail="找不到此學生")
     student.followup_status = data.followup_status
+    if data.followup_status == "在籍" and not student.user_id:
+        await _auto_create_student_user(db, student)
     if data.followup_status == "離籍":
-        await db.execute(
-            select(Enrollment).where(
-                Enrollment.student_id == student_id,
-                Enrollment.status == "active",
-            )
-        )
         enrollments_result = await db.execute(
             select(Enrollment).where(
                 Enrollment.student_id == student_id,
@@ -167,6 +170,33 @@ async def update_followup_status(
             enroll.status = "dropped"
     await db.commit()
     return {"success": True, "followup_status": data.followup_status}
+
+
+async def _auto_create_student_user(db: AsyncSession, student: Student) -> None:
+    """在籍時自動建立學生帳號（帳號＝密碼＝身分證字號）。"""
+    id_number = (student.id_number or "").strip()
+    if not id_number:
+        return
+    if student.user_id:
+        return
+    # 先查同身分證的其他學生是否已有專屬帳號，避免重複建立
+    same_id = (
+        await db.execute(
+            select(Student).where(Student.id_number == id_number, Student.user_id.isnot(None)).limit(1)
+        )
+    ).scalar_one_or_none()
+    if same_id and same_id.user_id:
+        student.user_id = same_id.user_id
+        return
+    user = User(
+        email=None,
+        password_hash=hash_password(id_number),
+        role="student",
+        auth_provider="id_number",
+    )
+    db.add(user)
+    await db.flush()
+    student.user_id = user.id
 
 
 @router.put("/student-registrations/{student_id}")
@@ -206,7 +236,7 @@ def _format_registration(s: Student) -> dict:
         "id_number": s.id_number,
         "followup_status": s.followup_status,
         "remark": s.remark,
-        "email": s.user.email if s.user else "",
+        "email": (s.user.email or s.id_number or "") if s.user else (s.id_number or ""),
         "created_at": s.created_at,
     }
 
@@ -286,25 +316,6 @@ async def create_course(
     return _format_course(result.scalar_one())
 
 
-@router.put("/courses/reorder")
-async def reorder_courses(
-    data: dict,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin),
-):
-    order = data.get("order", [])
-    if not order:
-        raise HTTPException(status_code=400, detail="排序資料不得為空")
-    result = await db.execute(select(Course).where(Course.id.in_(order)))
-    courses = {c.id: c for c in result.scalars().all()}
-    for idx, course_id in enumerate(order):
-        course = courses.get(course_id)
-        if course:
-            course.display_order = idx
-    await db.flush()
-    return {"success": True, "message": "排序已更新"}
-
-
 @router.put("/courses/{course_id}", response_model=CourseResponse)
 async def update_course(
     course_id: int,
@@ -337,6 +348,21 @@ async def delete_course(
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+    # 先刪除相依資料，避免外鍵約束錯誤（enrollments.course_id 為 NOT NULL）
+    await db.execute(delete(Enrollment).where(Enrollment.course_id == course_id))
+    session_result = await db.execute(
+        select(CommunicationCourseSession.id).where(CommunicationCourseSession.course_id == course_id)
+    )
+    session_ids = session_result.scalars().all()
+    if session_ids:
+        await db.execute(
+            delete(CommunicationSessionStudent).where(CommunicationSessionStudent.session_id.in_(session_ids))
+        )
+        await db.execute(
+            delete(CommunicationCourseSession).where(CommunicationCourseSession.course_id == course_id)
+        )
+    await db.execute(delete(MakeupClass).where(MakeupClass.course_id == course_id))
+    await db.execute(delete(LeaveApplication).where(LeaveApplication.course_id == course_id))
     await db.delete(course)
     await db.commit()
     return {"success": True, "message": "課程已刪除"}

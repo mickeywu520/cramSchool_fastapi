@@ -4,6 +4,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.user import User
@@ -31,7 +32,11 @@ async def get_current_user(
         raise UnauthorizedException("Invalid token type")
 
     user_id = int(payload.get("sub"))
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.student), selectinload(User.teacher))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:

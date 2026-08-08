@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.models.refresh_token import RefreshToken
 from app.models.student import Student
+from app.models.teacher import Teacher
 from app.models.user import User
 from app.utils.exceptions import ConflictException, UnauthorizedException
 from app.utils.security import (
@@ -21,7 +22,7 @@ from app.utils.security import (
 
 
 async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
-    """Register a new user with student profile."""
+    """Register a new user with one or more student profiles."""
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == data["email"]))
     if result.scalar_one_or_none():
@@ -37,45 +38,111 @@ async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
     db.add(user)
     await db.flush()
 
-    # Generate student number
-    student_count_result = await db.execute(select(Student).order_by(Student.id.desc()).limit(1))
-    last_student = student_count_result.scalar_one_or_none()
-    next_id = (last_student.id + 1) if last_student else 1
-    student_number = f"HS{datetime.now().year}{next_id:04d}"
+    # Build student list (multi-student or legacy flat fields)
+    students_data = data.get("students") or []
+    if not students_data:
+        if data.get("student_name"):
+            students_data = [{
+                "student_name": data["student_name"],
+                "gender": data["gender"],
+                "birth_date": data["birth_date"],
+                "school": data["school"],
+                "grade": data["grade"],
+                "class_name": data.get("class_name"),
+                "id_number": data.get("id_number"),
+            }]
+    if not students_data:
+        raise ConflictException("請至少填寫一位學生資料")
 
-    # Create student profile
-    student = Student(
-        user_id=user.id,
-        student_name=data["student_name"],
-        gender=data["gender"],
-        birth_date=data["birth_date"],
-        school=data["school"],
-        grade=data["grade"],
-        class_name=data.get("class_name"),
-        parent_name=data["parent_name"],
-        parent_title=data.get("parent_title"),
-        phone=data["phone"],
-        parent2_name=data.get("parent2_name"),
-        parent2_title=data.get("parent2_title"),
-        parent2_phone=data.get("parent2_phone"),
-        home_phone=data.get("home_phone"),
-        id_number=data.get("id_number"),
-        student_number=student_number,
-    )
-    db.add(student)
-    await db.flush()
+    created_students: list[Student] = []
+    for idx, sdata in enumerate(students_data):
+        # Generate student number
+        student_count_result = await db.execute(select(Student).order_by(Student.id.desc()).limit(1))
+        last_student = student_count_result.scalar_one_or_none()
+        next_id = (last_student.id + 1) if last_student else 1
+        student_number = f"HS{datetime.now().year}{next_id:04d}"
 
-    return user, student
+        # 每位學生：若填寫身分證字號，自動建立專屬帳號（帳號＝密碼＝身分證字號）
+        id_number = (sdata.get("id_number") or "").strip()
+        student_user_id = None
+        if id_number:
+            existing_student = (
+                await db.execute(select(Student).where(Student.id_number == id_number).limit(1))
+            ).scalar_one_or_none()
+            if existing_student and existing_student.user_id:
+                student_user_id = existing_student.user_id
+            else:
+                student_user = User(
+                    email=None,
+                    password_hash=hash_password(id_number),
+                    role="student",
+                    auth_provider="id_number",
+                )
+                db.add(student_user)
+                await db.flush()
+                student_user_id = student_user.id
+
+        student = Student(
+            user_id=student_user_id,
+            parent_user_id=user.id,
+            student_name=sdata["student_name"],
+            gender=sdata["gender"],
+            birth_date=sdata["birth_date"],
+            school=sdata["school"],
+            grade=sdata["grade"],
+            class_name=sdata.get("class_name"),
+            parent_name=data["parent_name"],
+            parent_title=data.get("parent_title"),
+            phone=data["phone"],
+            parent2_name=data.get("parent2_name"),
+            parent2_title=data.get("parent2_title"),
+            parent2_phone=data.get("parent2_phone"),
+            home_phone=data.get("home_phone"),
+            id_number=sdata.get("id_number"),
+            student_number=student_number,
+            followup_status="待聯繫",
+        )
+        db.add(student)
+        await db.flush()
+        created_students.append(student)
+
+    return user, created_students[0]
 
 
 async def login_user(db: AsyncSession, email: str, password: str) -> dict:
-    """Authenticate user with email/password and return tokens."""
+    """Authenticate user with email or id_number and return tokens."""
+    is_id_number = "@" not in email
     result = await db.execute(
         select(User)
         .options(selectinload(User.student), selectinload(User.teacher))
         .where(User.email == email)
     )
     user = result.scalar_one_or_none()
+
+    # 舊資料相容：未找到帳號時，以身分證反查學生並補建/取得專屬帳號
+    if not user and is_id_number:
+        student_result = await db.execute(
+            select(Student).where(Student.id_number == email).limit(1)
+        )
+        student = student_result.scalar_one_or_none()
+        if student and student.user_id:
+            account_result = await db.execute(
+                select(User)
+                .options(selectinload(User.student), selectinload(User.teacher))
+                .where(User.id == student.user_id, User.auth_provider == "id_number")
+            )
+            user = account_result.scalar_one_or_none()
+        if student and not user:
+            account = User(
+                email=None,
+                password_hash=hash_password(student.id_number),
+                role="student",
+                auth_provider="id_number",
+            )
+            db.add(account)
+            await db.flush()
+            student.user_id = account.id
+            user = account
 
     if not user or not user.password_hash:
         raise UnauthorizedException("信箱或密碼錯誤")
@@ -165,21 +232,32 @@ async def _generate_tokens(db: AsyncSession, user: User) -> dict:
         "id": user.id,
         "email": user.email,
         "role": user.role,
+        "auth_provider": user.auth_provider,
     }
 
-    if user.student:
-        user_info["student_id"] = user.student.id
-        user_info["student_name"] = user.student.student_name
+    # 依 user_id 反查學生（避免 async lazy-load）
+    student_result = await db.execute(
+        select(Student).where(Student.user_id == user.id).limit(1)
+    )
+    student = student_result.scalar_one_or_none()
+    if student:
+        user_info["student_id"] = student.id
+        user_info["student_name"] = student.student_name
     else:
-        user_info["student_id"] = None
-        user_info["student_name"] = None
+        # 家長帳號：回傳第一位小孩資料，供前端顯示
+        first_child_result = await db.execute(
+            select(Student).where(Student.parent_user_id == user.id).order_by(Student.id.asc()).limit(1)
+        )
+        first_child = first_child_result.scalar_one_or_none()
+        user_info["student_id"] = first_child.id if first_child else None
+        user_info["student_name"] = first_child.student_name if first_child else None
 
-    if user.teacher:
-        user_info["teacher_id"] = user.teacher.id
-        user_info["teacher_name"] = user.teacher.name
-    else:
-        user_info["teacher_id"] = None
-        user_info["teacher_name"] = None
+    teacher_result = await db.execute(
+        select(Teacher).where(Teacher.user_id == user.id).limit(1)
+    )
+    teacher = teacher_result.scalar_one_or_none()
+    user_info["teacher_id"] = teacher.id if teacher else None
+    user_info["teacher_name"] = teacher.name if teacher else None
 
     return {
         "access_token": access_token,

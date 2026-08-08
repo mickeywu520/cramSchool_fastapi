@@ -51,6 +51,7 @@ async def _add_missing_columns():
             "parent2_name": "VARCHAR(50)",
             "parent2_title": "VARCHAR(10)",
             "remark": "TEXT",
+            "parent_user_id": "INTEGER REFERENCES users(id)",
         },
         "courses": {
             "grade_level": "VARCHAR(20)",
@@ -61,6 +62,11 @@ async def _add_missing_columns():
             "start_time": "VARCHAR(10)",
             "end_time": "VARCHAR(10)",
             "location": "VARCHAR(50)",
+            "tutoring_day_of_week": "INTEGER",
+            "tutoring_days_of_week": "VARCHAR(20)",
+            "tutoring_start_time": "VARCHAR(10)",
+            "tutoring_end_time": "VARCHAR(10)",
+            "tutoring_location": "VARCHAR(50)",
             "branch_id": "INTEGER REFERENCES branches(id)",
             "school_year": "VARCHAR(10)",
             "semester": "VARCHAR(10)",
@@ -104,9 +110,114 @@ async def _drop_old_columns():
                 pass  # column may not exist or SQLite version < 3.35.0
 
 
+async def _migrate_students_nullable_user_id():
+    """Rebuild students table so user_id is nullable + add parent_user_id (SQLite)."""
+    async with engine.begin() as conn:
+        info_result = await conn.execute(text("PRAGMA table_info(students)"))
+        rows = info_result.fetchall()
+        cols = {row[1]: row for row in rows}
+        if "user_id" not in cols:
+            return
+        # row: cid, name, type, notnull, dflt_value, pk
+        if cols["user_id"][3] == 0:
+            return  # already nullable
+
+        await conn.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            col_defs = []
+            for r in rows:
+                cid, name, ctype, notnull, dflt, pk = r
+                if name == "user_id":
+                    col_defs.append(f'"user_id" INTEGER UNIQUE REFERENCES users(id)')
+                elif name == "parent_user_id":
+                    continue
+                else:
+                    parts = [f'"{name}" {ctype}']
+                    if notnull and name not in ("user_id",):
+                        parts.append("NOT NULL")
+                    if dflt is not None:
+                        parts.append(f"DEFAULT {dflt}")
+                    if pk:
+                        parts.append("PRIMARY KEY AUTOINCREMENT")
+                    col_defs.append(" ".join(parts))
+            col_defs.append('"parent_user_id" INTEGER REFERENCES users(id)')
+            create_sql = f'CREATE TABLE "students_new" ({", ".join(col_defs)})'
+            await conn.execute(text(create_sql))
+
+            copy_cols = [r[1] for r in rows]
+            insert_sql = (
+                'INSERT INTO "students_new" (' + ", ".join(f'"{c}"' for c in copy_cols) + ") "
+                "SELECT " + ", ".join(f'"{c}"' for c in copy_cols) + " FROM students"
+            )
+            await conn.execute(text(insert_sql))
+
+            await conn.execute(text('DROP TABLE "students"'))
+            await conn.execute(text('ALTER TABLE "students_new" RENAME TO "students"'))
+            logger.info("Rebuilt 'students' table: user_id nullable + parent_user_id added")
+        finally:
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
+async def _migrate_users_nullable_email():
+    """Rebuild users table so email is nullable (SQLite)."""
+    async with engine.begin() as conn:
+        info_result = await conn.execute(text("PRAGMA table_info(users)"))
+        rows = info_result.fetchall()
+        cols = {row[1]: row for row in rows}
+        if "email" not in cols:
+            return
+        # row: cid, name, type, notnull, dflt_value, pk
+        if cols["email"][3] == 0:
+            return  # already nullable
+
+        await conn.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            col_defs = []
+            for r in rows:
+                cid, name, ctype, notnull, dflt, pk = r
+                if name == "email":
+                    col_defs.append(f'"email" VARCHAR(255) UNIQUE')
+                else:
+                    parts = [f'"{name}" {ctype}']
+                    if notnull and name not in ("email",):
+                        parts.append("NOT NULL")
+                    if dflt is not None:
+                        parts.append(f"DEFAULT {dflt}")
+                    if pk:
+                        parts.append("PRIMARY KEY AUTOINCREMENT")
+                    col_defs.append(" ".join(parts))
+            create_sql = f'CREATE TABLE "users_new" ({", ".join(col_defs)})'
+            await conn.execute(text(create_sql))
+
+            copy_cols = [r[1] for r in rows]
+            insert_sql = (
+                'INSERT INTO "users_new" (' + ", ".join(f'"{c}"' for c in copy_cols) + ") "
+                "SELECT " + ", ".join(f'"{c}"' for c in copy_cols) + " FROM users"
+            )
+            await conn.execute(text(insert_sql))
+
+            await conn.execute(text('DROP TABLE "users"'))
+            await conn.execute(text('ALTER TABLE "users_new" RENAME TO "users"'))
+            logger.info("Rebuilt 'users' table: email nullable")
+        finally:
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
+async def _clear_id_number_account_email():
+    """清空以身分證字號為 email 的學生帳號 email（登入識別改為 students.id_number）。"""
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE users SET email = NULL WHERE auth_provider = 'id_number'")
+        )
+        logger.info("Cleared email for id_number student accounts")
+
+
 async def init_db():
     """Create all tables and run migrations. Call on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _migrate_students_nullable_user_id()
+    await _migrate_users_nullable_email()
     await _add_missing_columns()
+    await _clear_id_number_account_email()
     await _drop_old_columns()

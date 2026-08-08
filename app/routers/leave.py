@@ -1,10 +1,12 @@
 """Leave & makeup router."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_middleware import require_student, require_teacher_or_admin
+from app.models.student import Student
 from app.models.user import User
 from app.schemas.leave import (
     LeaveApplicationListResponse,
@@ -20,14 +22,42 @@ from app.services import leave_service
 router = APIRouter(prefix="/leave", tags=["Leave & Makeup"])
 
 
+async def _resolve_student(
+    db: AsyncSession, user_id: int, student_id: int | None = None
+) -> Student:
+    """解析目前使用者的學生（本人或家長），支援指定 student_id。"""
+    if student_id is not None:
+        result = await db.execute(select(Student).where(Student.id == student_id))
+        student = result.scalar_one_or_none()
+        if student and (student.user_id == user_id or student.parent_user_id == user_id):
+            return student
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Student not found")
+    result = await db.execute(select(Student).where(Student.user_id == user_id))
+    student = result.scalar_one_or_none()
+    if not student:
+        result = await db.execute(
+            select(Student)
+            .where(Student.parent_user_id == user_id)
+            .order_by(Student.id.asc())
+            .limit(1)
+        )
+        student = result.scalar_one_or_none()
+    if not student:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Student not found")
+    return student
+
+
 # Student endpoints
 @router.post("/applications", response_model=LeaveApplicationResponse, status_code=201)
 async def create_application(
     data: LeaveApplicationRequest,
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     leave = await leave_service.create_leave_application(db, student.id, data.model_dump())
     await db.commit()
     return {
@@ -39,10 +69,11 @@ async def create_application(
 
 @router.get("/applications", response_model=LeaveApplicationListResponse)
 async def get_my_applications(
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     applications = await leave_service.get_my_applications(db, student.id)
     items = []
     for a in applications:
@@ -59,10 +90,11 @@ async def get_my_applications(
 async def update_application(
     application_id: int,
     data: LeaveApplicationRequest,
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     leave = await leave_service.update_application(db, application_id, student.id, data.model_dump())
     await db.commit()
     return {
@@ -76,10 +108,11 @@ async def update_application(
 @router.delete("/applications/{application_id}")
 async def cancel_application(
     application_id: int,
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     await leave_service.cancel_application(db, application_id, student.id)
     await db.commit()
     return {"success": True, "message": "已取消請假申請"}
@@ -123,10 +156,11 @@ async def review_application(
 # Makeup endpoints
 @router.get("/makeup", response_model=list[MakeupClassResponse])
 async def get_my_makeup(
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     classes = await leave_service.get_my_makeup_classes(db, student.id)
     return [
         {
@@ -143,10 +177,11 @@ async def get_my_makeup(
 
 @router.get("/makeup/upcoming", response_model=list[MakeupClassResponse])
 async def get_upcoming_makeup(
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = current_user.student
+    student = await _resolve_student(db, current_user.id, student_id)
     classes = await leave_service.get_upcoming_makeup(db, student.id)
     return [
         {

@@ -21,6 +21,11 @@ class CourseResponse(BaseModel):
     start_time: str | None = None
     end_time: str | None = None
     location: str | None = None
+    tutoring_day_of_week: int | None = None
+    tutoring_days_of_week: str | None = None
+    tutoring_start_time: str | None = None
+    tutoring_end_time: str | None = None
+    tutoring_location: str | None = None
     branch_id: int | None = None
     branch_name: str | None = None
     school_year: str | None = None
@@ -51,6 +56,11 @@ class CourseCreateRequest(BaseModel):
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)
+    tutoring_day_of_week: int | None = None
+    tutoring_days_of_week: str | None = Field(None, max_length=20)
+    tutoring_start_time: str | None = Field(None, max_length=10)
+    tutoring_end_time: str | None = Field(None, max_length=10)
+    tutoring_location: str | None = Field(None, max_length=50)
     branch_id: int | None = None
     school_year: str | None = Field(None, max_length=10)
     semester: str | None = Field(None, max_length=10)
@@ -78,6 +88,11 @@ class CourseUpdateRequest(BaseModel):
     start_time: str | None = Field(None, max_length=10)
     end_time: str | None = Field(None, max_length=10)
     location: str | None = Field(None, max_length=50)
+    tutoring_day_of_week: int | None = None
+    tutoring_days_of_week: str | None = Field(None, max_length=20)
+    tutoring_start_time: str | None = Field(None, max_length=10)
+    tutoring_end_time: str | None = Field(None, max_length=10)
+    tutoring_location: str | None = Field(None, max_length=50)
     branch_id: int | None = None
     school_year: str | None = Field(None, max_length=10)
     semester: str | None = Field(None, max_length=10)

@@ -14,6 +14,7 @@ from app.middleware.auth_middleware import require_student
 from app.models.student import Student
 from app.models.user import User
 from app.schemas.student import (
+    CourseScoreHistory,
     CourseSummary,
     ExamScoreResponse,
     HomeworkSummary,
@@ -31,59 +32,85 @@ MAX_AVATAR_SIZE = 5 * 1024 * 1024
 
 @router.get("/me", response_model=StudentResponse)
 async def get_my_profile(
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    return await student_service.get_student_response(db, current_user.id)
+    return await student_service.get_student_response(db, current_user.id, student_id)
 
 
 @router.put("/me", response_model=StudentResponse)
 async def update_my_profile(
     data: StudentUpdateRequest,
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    result = await student_service.update_student(db, current_user.id, data.model_dump(exclude_none=True))
+    result = await student_service.update_student(db, current_user.id, data.model_dump(exclude_none=True), student_id)
     await db.commit()
     return result
 
 
-@router.get("/progress", response_model=ProgressResponse)
-async def get_my_progress(
+@router.get("/mine", response_model=list[StudentResponse])
+async def get_my_students(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    return await student_service.get_progress(db, current_user.id)
+    """目前使用者（本人或家長）可存取的全部學生，供多學生切換。"""
+    students = await student_service.get_students_for_user(db, current_user.id)
+    return [await student_service.get_student_response(db, current_user.id, s.id) for s in students]
+
+
+@router.get("/progress", response_model=ProgressResponse)
+async def get_my_progress(
+    student_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student),
+):
+    return await student_service.get_progress(db, current_user.id, student_id)
 
 
 @router.get("/courses", response_model=list[CourseSummary])
 async def get_my_courses(
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    return await student_service.get_my_courses(db, current_user.id)
+    return await student_service.get_my_courses(db, current_user.id, student_id)
+
+
+@router.get("/score-history", response_model=list[CourseScoreHistory])
+async def get_my_score_history(
+    student_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student),
+):
+    return await student_service.get_my_score_history(db, current_user.id, student_id)
 
 
 @router.get("/exams", response_model=list[ExamScoreResponse])
 async def get_my_exams(
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    return await student_service.get_my_exams(db, current_user.id)
+    return await student_service.get_my_exams(db, current_user.id, student_id)
 
 
 @router.get("/homework", response_model=list[HomeworkSummary])
 async def get_my_homework(
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    return await student_service.get_my_homework(db, current_user.id)
+    return await student_service.get_my_homework(db, current_user.id, student_id)
 
 
 @router.post("/avatar")
 async def upload_avatar(
     request: Request,
     file: UploadFile = File(...),
+    student_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
@@ -102,10 +129,13 @@ async def upload_avatar(
     base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
     avatar_url = f"{base_url}/uploads/avatars/{filename}"
     result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
+        select(Student).where(Student.id == student_id) if student_id
+        else select(Student).where(Student.user_id == current_user.id)
     )
     student = result.scalar_one_or_none()
     if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if student.user_id != current_user.id and student.parent_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Student not found")
     student.avatar_url = avatar_url
     await db.commit()

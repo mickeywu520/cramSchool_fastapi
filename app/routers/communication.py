@@ -22,9 +22,23 @@ from app.services import communication_service
 router = APIRouter(prefix="/communication", tags=["Communication Book"])
 
 
-async def _get_student(db: AsyncSession, user_id: int) -> Student:
+async def _get_student(db: AsyncSession, user_id: int, student_id: int | None = None) -> Student:
+    if student_id is not None:
+        result = await db.execute(select(Student).where(Student.id == student_id))
+        student = result.scalar_one_or_none()
+        if student and (student.user_id == user_id or student.parent_user_id == user_id):
+            return student
+        raise HTTPException(status_code=404, detail="Student not found")
     result = await db.execute(select(Student).where(Student.user_id == user_id))
     student = result.scalar_one_or_none()
+    if not student:
+        result = await db.execute(
+            select(Student)
+            .where(Student.parent_user_id == user_id)
+            .order_by(Student.id.asc())
+            .limit(1)
+        )
+        student = result.scalar_one_or_none()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     return student
@@ -34,10 +48,11 @@ async def _get_student(db: AsyncSession, user_id: int) -> Student:
 async def get_my_entries(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = await _get_student(db, current_user.id)
+    student = await _get_student(db, current_user.id, student_id)
     entries = await communication_service.get_session_entries(db, student.id, date_from, date_to)
     items = [StudentSessionEntry(**e) for e in entries]
     return StudentEntryListResponse(
@@ -53,10 +68,11 @@ async def get_my_entries(
 @router.get("/weekly", response_model=WeeklyResponse)
 async def get_weekly(
     week_start: date | None = Query(None),
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = await _get_student(db, current_user.id)
+    student = await _get_student(db, current_user.id, student_id)
     entries = await communication_service.get_session_weekly(db, student.id, week_start)
     from datetime import timedelta
     ws = week_start or (date.today() - timedelta(days=date.today().weekday()))
@@ -76,10 +92,11 @@ async def get_weekly(
 async def submit_feedback(
     entry_id: int,
     data: FeedbackRequest,
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    student = await _get_student(db, current_user.id)
+    student = await _get_student(db, current_user.id, student_id)
     await communication_service.submit_session_feedback(
         db, entry_id, student.id, data.is_signed
     )
