@@ -131,3 +131,8 @@ class EnrollmentCreateRequest(BaseModel):
 class BatchCopyEnrollmentsRequest(BaseModel):
     source_course_id: int
     target_course_id: int
+
+
+class BatchEnrollRequest(BaseModel):
+    student_ids: list[int]
+    course_id: int

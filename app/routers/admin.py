@@ -42,6 +42,7 @@ from app.schemas.communication_session import (
 )
 from app.schemas.course import (
     BatchCopyEnrollmentsRequest,
+    BatchEnrollRequest,
     CourseCreateRequest,
     CourseResponse,
     CourseUpdateRequest,
@@ -465,6 +466,40 @@ async def delete_enrollment(
     await db.delete(enrollment)
     await db.commit()
     return {"success": True, "message": "已取消選課"}
+
+
+@router.post("/enrollments/batch", status_code=201)
+async def batch_enroll_students(
+    data: BatchEnrollRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    course_result = await db.execute(select(Course).where(Course.id == data.course_id))
+    if not course_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="課程不存在")
+
+    existing_result = await db.execute(
+        select(Enrollment).where(
+            Enrollment.course_id == data.course_id,
+            Enrollment.status == "active",
+        )
+    )
+    existing_ids = {e.student_id for e in existing_result.scalars().all()}
+
+    added = 0
+    for student_id in data.student_ids:
+        if student_id in existing_ids:
+            continue
+        enrollment = Enrollment(
+            student_id=student_id,
+            course_id=data.course_id,
+            status="active",
+        )
+        db.add(enrollment)
+        added += 1
+
+    await db.commit()
+    return {"success": True, "message": f"已加入 {added} 位學生", "added": added}
 
 
 @router.post("/enrollments/batch-copy")

@@ -62,7 +62,28 @@ async def get_session_entries(
 
     result = await db.execute(query)
     records = result.scalars().all()
-    return [_format_student_entry(r) for r in records]
+    if not records:
+        return []
+
+    session_ids = sorted({r.session_id for r in records if r.session_id})
+    class_avgs: dict[int, float | None] = {}
+    if session_ids:
+        rows = (
+            await db.execute(
+                select(
+                    CommunicationSessionStudent.session_id,
+                    CommunicationSessionStudent.exam_score,
+                ).where(CommunicationSessionStudent.session_id.in_(session_ids))
+            )
+        ).all()
+        by_session: dict[int, list[int]] = {}
+        for sid, score in rows:
+            if score is not None:
+                by_session.setdefault(sid, []).append(score)
+        for sid, scores in by_session.items():
+            class_avgs[sid] = round(sum(scores) / len(scores), 1) if scores else None
+
+    return [_format_student_entry(r, class_avgs.get(r.session_id)) for r in records]
 
 
 async def get_session_weekly(
@@ -127,7 +148,7 @@ async def submit_session_feedback(
     return record
 
 
-def _format_student_entry(r: CommunicationSessionStudent) -> dict:
+def _format_student_entry(r: CommunicationSessionStudent, class_average: float | None = None) -> dict:
     session = r.session
     course = session.course if session else None
     teacher = course.teacher if course else None
@@ -156,6 +177,7 @@ def _format_student_entry(r: CommunicationSessionStudent) -> dict:
         "homework_workbook": r.homework_workbook,
         "exam_score": r.exam_score,
         "custom_scores": custom_scores,
+        "class_average": class_average,
         "tutoring_attendance": r.tutoring_attendance,
         "notes": r.notes,
         "parent_signed": r.parent_signed,

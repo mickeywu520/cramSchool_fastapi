@@ -27,6 +27,7 @@ class StudentSessionEntry(BaseModel):
     handout_status: str | None = None
     exam_score: int | None = None
     custom_scores: dict[str, int] = {}
+    class_average: float | None = None
     tutoring_attendance: bool = False
     notes: str | None = None
     parent_signed: bool = False

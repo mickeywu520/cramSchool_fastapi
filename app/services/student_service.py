@@ -244,9 +244,17 @@ async def get_my_score_history(db: AsyncSession, user_id: int, student_id: int |
             )
             if not record:
                 continue
+            class_scores = [
+                r.exam_score
+                for r in session.student_records
+                if r.exam_score is not None
+            ]
+            class_average = (
+                round(sum(class_scores) / len(class_scores), 1) if class_scores else None
+            )
             scores: dict[str, int] = {}
             if record.exam_score is not None:
-                scores["考試"] = record.exam_score
+                scores["分數"] = record.exam_score
             custom = {}
             if record.custom_scores:
                 try:
@@ -267,6 +275,7 @@ async def get_my_score_history(db: AsyncSession, user_id: int, student_id: int |
                 "date": str(session.entry_date),
                 "scores": scores,
                 "average": avg,
+                "class_average": class_average,
             })
 
         if points:
