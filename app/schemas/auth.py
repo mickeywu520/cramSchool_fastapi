@@ -17,6 +17,7 @@ class StudentRegisterItem(BaseModel):
 
 class RegisterRequest(BaseModel):
     email: EmailStr
+    username: str | None = Field(default=None, max_length=50)
     password: str = Field(min_length=6, max_length=128)
     parent_name: str = Field(min_length=1, max_length=50)
     parent_title: str | None = None
@@ -40,6 +41,15 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str  # 信箱或身分證字號
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str  # 信箱或帳號名稱
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class FirebaseAuthRequest(BaseModel):

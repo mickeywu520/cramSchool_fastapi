@@ -1,5 +1,7 @@
 """Authentication service - registration, login, token management."""
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -7,11 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User
-from app.utils.exceptions import ConflictException, UnauthorizedException
+from app.services import mail_service
+from app.utils.exceptions import (
+    ConflictException,
+    NotFoundException,
+    UnauthorizedException,
+    ValidationException,
+)
 from app.utils.security import (
     create_access_token,
     create_refresh_token,
@@ -28,9 +37,16 @@ async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
     if result.scalar_one_or_none():
         raise ConflictException("此信箱已被註冊")
 
+    username = (data.get("username") or "").strip() or None
+    if username:
+        username_result = await db.execute(select(User).where(User.username == username))
+        if username_result.scalar_one_or_none():
+            raise ConflictException("此帳號名稱已被使用")
+
     # Create user
     user = User(
         email=data["email"],
+        username=username,
         password_hash=hash_password(data["password"]),
         role="student",
         auth_provider="email",
@@ -110,19 +126,28 @@ async def register_user(db: AsyncSession, data: dict) -> tuple[User, Student]:
 
 
 async def login_user(db: AsyncSession, email: str, password: str) -> dict:
-    """Authenticate user with email or id_number and return tokens."""
-    is_id_number = "@" not in email
+    """Authenticate user with email, username or id_number and return tokens."""
+    login_identifier = email.strip()
     result = await db.execute(
         select(User)
         .options(selectinload(User.student), selectinload(User.teacher))
-        .where(User.email == email)
+        .where(User.email == login_identifier)
     )
     user = result.scalar_one_or_none()
 
+    # 帳號名稱登入
+    if not user:
+        username_result = await db.execute(
+            select(User)
+            .options(selectinload(User.student), selectinload(User.teacher))
+            .where(User.username == login_identifier)
+        )
+        user = username_result.scalar_one_or_none()
+
     # 舊資料相容：未找到帳號時，以身分證反查學生並補建/取得專屬帳號
-    if not user and is_id_number:
+    if not user:
         student_result = await db.execute(
-            select(Student).where(Student.id_number == email).limit(1)
+            select(Student).where(Student.id_number == login_identifier).limit(1)
         )
         student = student_result.scalar_one_or_none()
         if student and student.user_id:
@@ -266,3 +291,111 @@ async def _generate_tokens(db: AsyncSession, user: User) -> dict:
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "user": user_info,
     }
+
+
+def _hash_token(token: str) -> str:
+    """SHA-256 雜湊，資料庫不存明碼 token。"""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def find_user_for_reset(db: AsyncSession, login_identifier: str) -> User | None:
+    """依信箱或帳號名稱找 user（不提示帳號是否存在）。"""
+    identifier = login_identifier.strip()
+    result = await db.execute(
+        select(User).where(User.email == identifier)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        result = await db.execute(
+            select(User).where(User.username == identifier)
+        )
+        user = result.scalar_one_or_none()
+    return user
+
+
+async def request_password_reset(db: AsyncSession, login_identifier: str) -> bool:
+    """產生一次性 token 並寄送重設連結。一律回 True（避免帳號枚舉）。"""
+    user = await find_user_for_reset(db, login_identifier)
+
+    if not user or not user.email or not user.password_hash:
+        # 不論帳號是否存在都走完整流程，但只有真的找到才寄信
+        return False
+
+    # 使先前未使用的 token 全數失效
+    old_tokens = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used == False,
+        )
+    )
+    for old in old_tokens.scalars().all():
+        old.used = True
+
+    token = secrets.token_urlsafe(32)
+    db.add(PasswordResetToken(
+        user_id=user.id,
+        token_hash=_hash_token(token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        used=False,
+    ))
+    await db.flush()
+
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    await mail_service.send_email_async(
+        to_email=user.email,
+        subject="禾笙文理補習班 - 重設密碼",
+        html_body=mail_service.build_password_reset_email(reset_url),
+    )
+    return True
+
+
+async def verify_reset_token(db: AsyncSession, token: str) -> User:
+    """驗證 token：存在、未使用、未過期。回傳對應 user。"""
+    token_hash = _hash_token(token)
+    result = await db.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == token_hash)
+        .order_by(PasswordResetToken.id.desc())
+        .limit(1)
+    )
+    record = result.scalar_one_or_none()
+
+    if not record or record.used:
+        raise ValidationException("重設連結無效或已使用，請重新申請")
+
+    now = datetime.now(timezone.utc)
+    if record.expires_at.replace(tzinfo=timezone.utc) < now:
+        raise ValidationException("重設連結已過期，請重新申請")
+
+    user_result = await db.execute(select(User).where(User.id == record.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise UnauthorizedException("帳號不存在或已停用")
+    return user
+
+
+async def reset_password(db: AsyncSession, token: str, new_password: str) -> User:
+    """重設密碼：更新 hash、標記 token 已使用、撤銷 refresh tokens。"""
+    user = await verify_reset_token(db, token)
+
+    token_hash = _hash_token(token)
+    record_result = await db.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == token_hash)
+        .order_by(PasswordResetToken.id.desc())
+        .limit(1)
+    )
+    record = record_result.scalar_one_or_none()
+    if record:
+        record.used = True
+
+    user.password_hash = hash_password(new_password)
+
+    # 撤銷所有 refresh tokens（強制其他裝置登出）
+    tokens_result = await db.execute(
+        select(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.is_revoked == False)
+    )
+    for rt in tokens_result.scalars().all():
+        rt.is_revoked = True
+
+    return user

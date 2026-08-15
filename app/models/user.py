@@ -12,6 +12,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    username: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="student")
     auth_provider: Mapped[str] = mapped_column(String(20), default="email")
@@ -27,3 +28,4 @@ class User(Base):
     student = relationship("Student", back_populates="user", uselist=False, foreign_keys="Student.user_id")
     teacher = relationship("Teacher", back_populates="user", uselist=False)
     refresh_tokens = relationship("RefreshToken", back_populates="user")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user")

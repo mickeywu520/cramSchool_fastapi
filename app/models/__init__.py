@@ -16,6 +16,7 @@ from app.models.announcement import Announcement
 from app.models.honor import Honor
 from app.models.banner import Banner
 from app.models.refresh_token import RefreshToken
+from app.models.password_reset_token import PasswordResetToken
 from app.models.about_card import AboutCard
 from app.models.branch import Branch
 from app.models.communication_session import CommunicationCourseSession, CommunicationSessionStudent
@@ -37,6 +38,7 @@ __all__ = [
     "Honor",
     "Banner",
     "RefreshToken",
+    "PasswordResetToken",
     "AboutCard",
     "Branch",
     "CommunicationCourseSession",

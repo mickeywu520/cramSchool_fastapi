@@ -7,10 +7,12 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
+    ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenResponse,
 )
 from app.services import auth_service
@@ -47,3 +49,27 @@ async def logout(
     await auth_service.logout_user(db, data.refresh_token)
     await db.commit()
     return {"success": True, "message": "已登出"}
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """發送重設密碼連結（統一回應，避免帳號枚舉）。"""
+    await auth_service.request_password_reset(db, data.email)
+    await db.commit()
+    return {"success": True, "message": "若此信箱或帳號存在，我們已發送重設密碼連結"}
+
+
+@router.get("/reset-password/verify")
+async def verify_reset_password(token: str, db: AsyncSession = Depends(get_db)):
+    """驗證重設 token 是否有效。"""
+    await auth_service.verify_reset_token(db, token)
+    await db.commit()
+    return {"success": True, "message": "Token 有效"}
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """使用 token 重設密碼。"""
+    await auth_service.reset_password(db, data.token, data.new_password)
+    await db.commit()
+    return {"success": True, "message": "密碼重設成功，請重新登入"}
