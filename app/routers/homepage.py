@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.models.about_card import AboutCard
 from app.models.announcement import Announcement
 from app.models.banner import Banner
@@ -135,5 +136,5 @@ async def get_homepage_data(response: Response, db: AsyncSession = Depends(get_d
             for c in early_bird_courses
         ],
     }
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return data

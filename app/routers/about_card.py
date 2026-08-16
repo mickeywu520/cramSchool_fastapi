@@ -1,10 +1,11 @@
 """About Card router for admin management."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.about_card import AboutCard
 from app.models.user import User
@@ -22,18 +23,20 @@ MAX_CARDS = 5
 
 
 @router.get("", response_model=AboutCardListResponse)
-async def list_about_cards(db: AsyncSession = Depends(get_db)):
+async def list_about_cards(response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(AboutCard).where(AboutCard.is_active == True).order_by(AboutCard.display_order)
     )
     cards = result.scalars().all()
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return {"total": len(cards), "cards": cards}
 
 
 @router.get("/all", response_model=AboutCardListResponse)
-async def list_all_about_cards(db: AsyncSession = Depends(get_db)):
+async def list_all_about_cards(response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AboutCard).order_by(AboutCard.display_order))
     cards = result.scalars().all()
+    response.headers["Cache-Control"] = "no-store"
     return {"total": len(cards), "cards": cards}
 
 

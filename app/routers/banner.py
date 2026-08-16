@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.banner import Banner
 from app.models.user import User
@@ -24,7 +25,7 @@ async def list_banners(response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Banner).where(Banner.is_active == True).order_by(Banner.display_order)
     )
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return result.scalars().all()
 
 

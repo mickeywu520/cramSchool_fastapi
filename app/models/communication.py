@@ -14,7 +14,7 @@ class CommunicationBookEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     student_id: Mapped[int] = mapped_column(Integer, ForeignKey("students.id"), nullable=False)
-    teacher_id: Mapped[int] = mapped_column(Integer, ForeignKey("teachers.id"), nullable=False)
+    teacher_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("teachers.id"), nullable=True)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     focus_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     interaction_score: Mapped[int | None] = mapped_column(Integer, nullable=True)

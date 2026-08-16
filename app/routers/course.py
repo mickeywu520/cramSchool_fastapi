@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.middleware.auth_middleware import get_current_user, require_student
 from app.models.student import Student
 from app.models.user import User
@@ -75,14 +76,14 @@ async def list_courses(
         is_early_bird=is_early_bird, branch_id=branch_id, is_active=True,
     )
     result = [_format_course(c) for c in courses]
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return {"total": len(result), "courses": result}
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
 async def get_course(response: Response, course_id: int, db: AsyncSession = Depends(get_db)):
     c = await course_service.get_course_by_id(db, course_id)
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return _format_course(c)
 
 

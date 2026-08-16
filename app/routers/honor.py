@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.config import settings
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.honor import Honor
 from app.models.user import User
@@ -55,7 +56,7 @@ async def list_honors(
         query = query.where(Honor.year == year)
     result = await db.execute(query)
     honors = result.scalars().all()
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return {"total": len(honors), "honors": honors}
 
 
@@ -64,7 +65,7 @@ async def get_honor_years(response: Response, db: AsyncSession = Depends(get_db)
     result = await db.execute(
         select(Honor.year).distinct().order_by(Honor.year.desc())
     )
-    response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return [row[0] for row in result.all()]
 
 

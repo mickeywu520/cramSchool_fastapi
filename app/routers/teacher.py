@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.middleware.auth_middleware import require_teacher_or_admin
 from app.models.teacher import Teacher
 from app.models.user import User
@@ -78,19 +79,19 @@ async def list_teachers(
     if include_inactive:
         response.headers["Cache-Control"] = "no-store"
     else:
-        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
+        response.headers["Cache-Control"] = settings.public_cache_control()
     return {"total": len(teachers), "teachers": teachers}
 
 
 @router.get("/featured")
 async def featured_teachers(response: Response, db: AsyncSession = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return await ts.get_featured_teachers(db)
 
 
 @router.get("/{teacher_id}")
 async def get_teacher(response: Response, teacher_id: int, db: AsyncSession = Depends(get_db)):
-    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
+    response.headers["Cache-Control"] = settings.public_cache_control()
     return await ts.get_teacher_by_id(db, teacher_id)
 
 

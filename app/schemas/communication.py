@@ -104,7 +104,7 @@ class CommunicationListResponse(BaseModel):
 
 class CommunicationEntryCreateRequest(BaseModel):
     student_id: int
-    teacher_id: int
+    teacher_id: int | None = None
     entry_date: date
     focus_score: int | None = None
     interaction_score: int | None = None

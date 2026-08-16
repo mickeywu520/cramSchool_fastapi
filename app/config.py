@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     FRONTEND_URL: str = "https://www.hsedu.com.tw"
 
+    # Browser Cache (public GET APIs)
+    # 九月底 production 前請設 0（更新即時顯示），production 後再調整秒數
+    PUBLIC_CACHE_MAX_AGE: int = 0
+    PUBLIC_CACHE_STALE_WHILE_REVALIDATE: int = 86400
+
+    def public_cache_control(self) -> str:
+        if self.PUBLIC_CACHE_MAX_AGE <= 0:
+            return "no-store"
+        return (
+            f"public, max-age={self.PUBLIC_CACHE_MAX_AGE}, "
+            f"stale-while-revalidate={self.PUBLIC_CACHE_STALE_WHILE_REVALIDATE}"
+        )
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

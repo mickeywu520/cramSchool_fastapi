@@ -245,6 +245,55 @@ async def _migrate_users_add_username():
             await conn.execute(text("PRAGMA foreign_keys=ON"))
 
 
+async def _migrate_communication_teacher_id_nullable():
+    """Rebuild communication_book_entries table so teacher_id is nullable (SQLite).
+
+    Allows deleting a teacher while keeping historical communication book entries.
+    """
+    async with engine.begin() as conn:
+        info_result = await conn.execute(text("PRAGMA table_info(communication_book_entries)"))
+        rows = info_result.fetchall()
+        cols = {row[1]: row for row in rows}
+        if "teacher_id" not in cols:
+            return
+        if cols["teacher_id"][3] == 0:
+            return  # already nullable
+
+        await conn.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            col_defs = []
+            for r in rows:
+                cid, name, ctype, notnull, dflt, pk = r
+                if name == "teacher_id":
+                    col_defs.append(f'"teacher_id" INTEGER REFERENCES teachers(id)')
+                else:
+                    parts = [f'"{name}" {ctype}']
+                    if notnull:
+                        parts.append("NOT NULL")
+                    if dflt is not None:
+                        parts.append(f"DEFAULT {dflt}")
+                    if pk:
+                        parts.append("PRIMARY KEY AUTOINCREMENT")
+                    col_defs.append(" ".join(parts))
+            create_sql = f'CREATE TABLE "communication_book_entries_new" ({", ".join(col_defs)})'
+            await conn.execute(text(create_sql))
+
+            copy_cols = [r[1] for r in rows]
+            insert_sql = (
+                'INSERT INTO "communication_book_entries_new" (' + ", ".join(f'"{c}"' for c in copy_cols) + ") "
+                "SELECT " + ", ".join(f'"{c}"' for c in copy_cols) + " FROM communication_book_entries"
+            )
+            await conn.execute(text(insert_sql))
+
+            await conn.execute(text('DROP TABLE "communication_book_entries"'))
+            await conn.execute(
+                text('ALTER TABLE "communication_book_entries_new" RENAME TO "communication_book_entries"')
+            )
+            logger.info("Rebuilt 'communication_book_entries' table: teacher_id nullable")
+        finally:
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
 async def _clear_id_number_account_email():
     """清空以身分證字號為 email 的學生帳號 email（登入識別改為 students.id_number）。"""
     async with engine.begin() as conn:
@@ -261,6 +310,7 @@ async def init_db():
     await _migrate_students_nullable_user_id()
     await _migrate_users_nullable_email()
     await _migrate_users_add_username()
+    await _migrate_communication_teacher_id_nullable()
     await _add_missing_columns()
     await _clear_id_number_account_email()
     await _drop_old_columns()
