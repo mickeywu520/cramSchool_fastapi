@@ -8,6 +8,7 @@ class BannerResponse(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     image_url: str
+    mobile_image_url: str | None = None
     link_url: str | None = None
     display_order: int = 0
     is_active: bool = True
@@ -19,6 +20,7 @@ class BannerCreateRequest(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     image_url: str
+    mobile_image_url: str | None = None
     link_url: str | None = None
     display_order: int = 0
     is_active: bool = True
@@ -28,6 +30,7 @@ class BannerUpdateRequest(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     image_url: str | None = None
+    mobile_image_url: str | None = None
     link_url: str | None = None
     display_order: int | None = None
     is_active: bool | None = None

@@ -106,6 +106,7 @@ class StudentRegistrationResponse(BaseModel):
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
+    card_number: str | None = None
     followup_status: str = "待聯繫"
     remark: str | None = None
     email: str = ""
@@ -133,6 +134,7 @@ class StudentRegistrationUpdateRequest(BaseModel):
     parent2_phone: str | None = None
     home_phone: str | None = None
     id_number: str | None = None
+    card_number: str | None = Field(None, max_length=50)
     remark: str | None = None
 
 
@@ -150,6 +152,7 @@ class ScorePoint(BaseModel):
     date: str
     scores: dict[str, int]
     average: float
+    class_average: float | None = None
 
 
 class CourseScoreHistory(BaseModel):

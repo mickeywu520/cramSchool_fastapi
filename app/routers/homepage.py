@@ -79,6 +79,7 @@ async def get_homepage_data(response: Response, db: AsyncSession = Depends(get_d
                 "title": b.title,
                 "subtitle": b.subtitle,
                 "image_url": b.image_url,
+                "mobile_image_url": b.mobile_image_url,
                 "link_url": b.link_url,
             }
             for b in banners
@@ -108,6 +109,7 @@ async def get_homepage_data(response: Response, db: AsyncSession = Depends(get_d
                 "id": t.id,
                 "name": t.name,
                 "subject": t.subject,
+                "subjects": t.subjects,
                 "title": t.title,
                 "motto": t.motto,
                 "photo_url": t.photo_url,

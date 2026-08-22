@@ -32,3 +32,23 @@ class Teacher(Base):
     user = relationship("User", back_populates="teacher")
     courses = relationship("Course", back_populates="teacher")
     communication_entries = relationship("CommunicationBookEntry", back_populates="teacher")
+    subjects_rel = relationship(
+        "TeacherSubject",
+        cascade="all, delete-orphan",
+        order_by="TeacherSubject.id",
+        lazy="selectin",
+    )
+
+    @property
+    def subjects(self) -> list[str]:
+        if self.subjects_rel:
+            return [ts.subject for ts in self.subjects_rel]
+        return [self.subject] if self.subject else []
+
+
+class TeacherSubject(Base):
+    __tablename__ = "teacher_subjects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    teacher_id: Mapped[int] = mapped_column(Integer, ForeignKey("teachers.id"), nullable=False)
+    subject: Mapped[str] = mapped_column(String(20), nullable=False)

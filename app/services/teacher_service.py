@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.teacher import Teacher
+from app.models.teacher import Teacher, TeacherSubject
 from app.utils.exceptions import NotFoundException
 
 
@@ -18,7 +18,7 @@ async def get_teachers(
     if is_active is not None:
         query = query.where(Teacher.is_active == is_active)
     if subject:
-        query = query.where(Teacher.subject == subject)
+        query = query.where(Teacher.subjects_rel.any(TeacherSubject.subject == subject))
     if search:
         query = query.where(Teacher.name.contains(search))
     if branch_id is not None:

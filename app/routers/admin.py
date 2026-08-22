@@ -235,6 +235,7 @@ def _format_registration(s: Student) -> dict:
         "parent2_phone": s.parent2_phone,
         "home_phone": s.home_phone,
         "id_number": s.id_number,
+        "card_number": s.card_number,
         "followup_status": s.followup_status,
         "remark": s.remark,
         "email": (s.user.email or s.id_number or "") if s.user else (s.id_number or ""),

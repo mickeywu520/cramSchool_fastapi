@@ -15,6 +15,7 @@ class Banner(Base):
     title: Mapped[str | None] = mapped_column(String(100), nullable=True)
     subtitle: Mapped[str | None] = mapped_column(String(200), nullable=True)
     image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    mobile_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     link_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

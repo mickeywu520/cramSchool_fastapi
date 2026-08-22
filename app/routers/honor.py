@@ -12,7 +12,7 @@ from app.models.user import User
 from app.schemas.honor import HonorListResponse, HonorResponse
 
 router = APIRouter(prefix="/honors", tags=["Honors"])
-MAX_HONORS = 40
+MAX_HONORS = 60
 
 
 class HonorCreateRequest(BaseModel):

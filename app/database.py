@@ -52,6 +52,7 @@ async def _add_missing_columns():
             "parent2_title": "VARCHAR(10)",
             "remark": "TEXT",
             "parent_user_id": "INTEGER REFERENCES users(id)",
+            "card_number": "VARCHAR(50)",
         },
         "courses": {
             "grade_level": "VARCHAR(20)",
@@ -84,6 +85,7 @@ async def _add_missing_columns():
         },
         "banners": {
             "subtitle": "VARCHAR(200)",
+            "mobile_image_url": "VARCHAR(500)",
         },
     }
     async with engine.begin() as conn:
@@ -303,6 +305,21 @@ async def _clear_id_number_account_email():
         logger.info("Cleared email for id_number student accounts")
 
 
+async def _migrate_teacher_subjects():
+    """Copy legacy teachers.subject into teacher_subjects (many-to-many) if missing."""
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            text(
+                "INSERT INTO teacher_subjects (teacher_id, subject) "
+                "SELECT t.id, t.subject FROM teachers t "
+                "WHERE t.subject IS NOT NULL AND t.subject != '' "
+                "AND NOT EXISTS (SELECT 1 FROM teacher_subjects ts WHERE ts.teacher_id = t.id)"
+            )
+        )
+        if result.rowcount:
+            logger.info(f"Migrated {result.rowcount} teacher subjects into teacher_subjects")
+
+
 async def init_db():
     """Create all tables and run migrations. Call on startup."""
     async with engine.begin() as conn:
@@ -312,5 +329,6 @@ async def init_db():
     await _migrate_users_add_username()
     await _migrate_communication_teacher_id_nullable()
     await _add_missing_columns()
+    await _migrate_teacher_subjects()
     await _clear_id_number_account_email()
     await _drop_old_columns()
