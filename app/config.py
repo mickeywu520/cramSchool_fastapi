@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     PUBLIC_CACHE_MAX_AGE: int = 0
     PUBLIC_CACHE_STALE_WHILE_REVALIDATE: int = 86400
 
+    # Punch clock (SOYAL 打卡機中介軟體)
+    # 中介軟體以 X-Api-Key 呼叫 POST /api/v1/punch-events，不用 JWT
+    PUNCH_API_KEY: str = ""
+
     def public_cache_control(self) -> str:
         if self.PUBLIC_CACHE_MAX_AGE <= 0:
             return "no-store"

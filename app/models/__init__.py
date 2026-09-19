@@ -20,6 +20,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.about_card import AboutCard
 from app.models.branch import Branch
 from app.models.communication_session import CommunicationCourseSession, CommunicationSessionStudent
+from app.models.attendance import AttendanceDaily, PunchRawEvent
 
 __all__ = [
     "User",
@@ -44,4 +45,6 @@ __all__ = [
     "Branch",
     "CommunicationCourseSession",
     "CommunicationSessionStudent",
+    "AttendanceDaily",
+    "PunchRawEvent",
 ]

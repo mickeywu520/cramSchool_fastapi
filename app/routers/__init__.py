@@ -14,6 +14,7 @@ from app.routers.homepage import router as homepage_router
 from app.routers.about_card import router as about_card_router
 from app.routers.settings import router as settings_router
 from app.routers.upload import router as upload_router
+from app.routers.punch import router as punch_router
 
 routers = [
     admin_router,
@@ -30,4 +31,5 @@ routers = [
     about_card_router,
     settings_router,
     upload_router,
+    punch_router,
 ]
