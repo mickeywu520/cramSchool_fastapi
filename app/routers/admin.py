@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.middleware.auth_middleware import require_admin, require_teacher_or_admin
 from app.utils.security import hash_password
+from app.models.attendance import ClassAttendance
 from app.models.branch import Branch
 from app.models.communication_session import (
     CommunicationCourseSession,
@@ -51,6 +52,7 @@ from app.schemas.course import (
 )
 from app.schemas.student import FollowupUpdateRequest, StudentRegistrationResponse, StudentRegistrationUpdateRequest
 from app.services import communication_service
+from app.services.communication_service import _fmt_punch_hhmm
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -847,6 +849,47 @@ async def delete_session(
     return {"success": True, "message": "聯絡簿記錄已刪除"}
 
 
+async def _session_punch_map(
+    db: AsyncSession,
+    session: CommunicationCourseSession,
+) -> dict[tuple[int, date], ClassAttendance]:
+    """本堂課的逐課打卡索引：(student_id, attendance_date) → 記錄，
+    只有存在打卡時間的才納入（打卡值優先）。"""
+    dates = {session.entry_date}
+    for sr in session.student_records:
+        if sr.reschedule_date:
+            dates.add(sr.reschedule_date)
+    rows = (
+        await db.execute(
+            select(ClassAttendance)
+            .where(
+                ClassAttendance.course_id == session.course_id,
+                ClassAttendance.attendance_date.in_(dates),
+            )
+        )
+    ).scalars().all()
+    return {
+        (ca.student_id, ca.attendance_date): ca
+        for ca in rows
+        if ca.first_punch is not None or ca.last_punch is not None
+    }
+
+
+def _punch_for_student_record(
+    punch_map: dict[tuple[int, date], ClassAttendance],
+    sr: CommunicationSessionStudent,
+    session: CommunicationCourseSession,
+) -> ClassAttendance | None:
+    if not punch_map:
+        return None
+    primary = sr.reschedule_date or session.entry_date
+    for day in (primary, session.entry_date):
+        found = punch_map.get((sr.student_id, day))
+        if found is not None:
+            return found
+    return None
+
+
 async def _build_session_response(db: AsyncSession, session_id: int) -> SessionResponse:
     result = await db.execute(
         select(CommunicationCourseSession)
@@ -861,6 +904,7 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
         raise HTTPException(status_code=404, detail="找不到此聯絡簿記錄")
 
     exam_cols = _parse_exam_columns(session.exam_columns)
+    punch_map = await _session_punch_map(db, session)
     students = []
     for sr in session.student_records:
         custom_scores = {}
@@ -869,12 +913,23 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
                 custom_scores = json.loads(sr.custom_scores)
             except json.JSONDecodeError:
                 custom_scores = {}
+        punch = _punch_for_student_record(punch_map, sr, session)
+        arrival_time = (
+            _fmt_punch_hhmm(punch.first_punch)
+            if punch and punch.first_punch is not None
+            else sr.arrival_time
+        )
+        departure_time = (
+            _fmt_punch_hhmm(punch.last_punch)
+            if punch and punch.last_punch is not None
+            else sr.departure_time
+        )
         students.append(StudentSessionResponse(
             id=sr.id,
             student_id=sr.student_id,
             student_name=sr.student.student_name if sr.student else "",
-            arrival_time=sr.arrival_time,
-            departure_time=sr.departure_time,
+            arrival_time=arrival_time,
+            departure_time=departure_time,
             progress=sr.progress,
             homework=sr.homework,
             vocab=sr.vocab,
