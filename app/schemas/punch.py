@@ -9,6 +9,7 @@ class PunchDevice(BaseModel):
     node_id: int = 1
     ip: str = ""
     source_sub_code: int | None = None
+    port_number: int | None = None
 
     model_config = {"extra": "ignore"}
 
@@ -80,9 +81,15 @@ class PunchIngestRequest(BaseModel):
 
 class PunchIngestItemResult(BaseModel):
     event_id: str
-    status: str  # ok | duplicate | unknown_card | inactive | error
+    status: str
     student_id: int | None = None
     student_name: str | None = None
+    stored: bool = False
+    class_attendance_id: int | None = None
+    course_id: int | None = None
+    session_type: str | None = None
+    session_ref: int | None = None
+    attendance_status: str | None = None
 
 
 class PunchIngestResponse(BaseModel):
@@ -101,3 +108,22 @@ class AttendanceDailyResponse(BaseModel):
     punch_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ClassAttendanceResponse(BaseModel):
+    id: int
+    student_id: int
+    student_name: str
+    card_number: str | None = None
+    course_id: int
+    course_name: str
+    attendance_date: str
+    session_type: str
+    session_ref: int
+    status: str
+    first_punch: str | None = None
+    last_punch: str | None = None
+    late_minutes: int | None = None
+    punch_count: int = 0
+    leave_id: int | None = None
+    leave_type: str | None = None

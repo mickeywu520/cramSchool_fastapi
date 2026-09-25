@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # Punch clock (SOYAL 打卡機中介軟體)
     # 中介軟體以 X-Api-Key 呼叫 POST /api/v1/punch-events，不用 JWT
     PUNCH_API_KEY: str = ""
+    PUNCH_ATTENDANCE_LATE_MINUTES: int = 5
+    PUNCH_ATTENDANCE_BEFORE_MINUTES: int = 30
+    PUNCH_ATTENDANCE_AFTER_MINUTES: int = 30
 
     def public_cache_control(self) -> str:
         if self.PUBLIC_CACHE_MAX_AGE <= 0:

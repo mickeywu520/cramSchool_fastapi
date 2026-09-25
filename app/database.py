@@ -87,6 +87,11 @@ async def _add_missing_columns():
             "subtitle": "VARCHAR(200)",
             "mobile_image_url": "VARCHAR(500)",
         },
+        "punch_raw_events": {
+            "source_sub_code": "INTEGER",
+            "port_number": "INTEGER",
+            "class_attendance_id": "INTEGER REFERENCES class_attendance(id)",
+        },
     }
     async with engine.begin() as conn:
         for table, columns in table_columns.items():
@@ -130,7 +135,7 @@ async def _migrate_students_nullable_user_id():
             for r in rows:
                 cid, name, ctype, notnull, dflt, pk = r
                 if name == "user_id":
-                    col_defs.append(f'"user_id" INTEGER UNIQUE REFERENCES users(id)')
+                    col_defs.append('"user_id" INTEGER UNIQUE REFERENCES users(id)')
                 elif name == "parent_user_id":
                     continue
                 else:
@@ -178,7 +183,7 @@ async def _migrate_users_nullable_email():
             for r in rows:
                 cid, name, ctype, notnull, dflt, pk = r
                 if name == "email":
-                    col_defs.append(f'"email" VARCHAR(255) UNIQUE')
+                    col_defs.append('"email" VARCHAR(255) UNIQUE')
                 else:
                     parts = [f'"{name}" {ctype}']
                     if notnull and name not in ("email",):
@@ -267,7 +272,7 @@ async def _migrate_communication_teacher_id_nullable():
             for r in rows:
                 cid, name, ctype, notnull, dflt, pk = r
                 if name == "teacher_id":
-                    col_defs.append(f'"teacher_id" INTEGER REFERENCES teachers(id)')
+                    col_defs.append('"teacher_id" INTEGER REFERENCES teachers(id)')
                 else:
                     parts = [f'"{name}" {ctype}']
                     if notnull:
@@ -322,6 +327,9 @@ async def _migrate_teacher_subjects():
 
 async def init_db():
     """Create all tables and run migrations. Call on startup."""
+    from app import models
+
+    _ = models
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _migrate_students_nullable_user_id()
