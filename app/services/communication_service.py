@@ -7,12 +7,14 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.attendance import ClassAttendance
 from app.models.communication import CommunicationBookEntry
 from app.models.communication_session import (
     CommunicationCourseSession,
     CommunicationSessionStudent,
 )
 from app.models.course import Course
+from app.services.attendance_service import TAIPEI_TZ
 from app.models.homework import HomeworkRecord
 from app.models.parent_feedback import ParentFeedback
 from app.models.reminder import Reminder
@@ -83,7 +85,8 @@ async def get_session_entries(
         for sid, scores in by_session.items():
             class_avgs[sid] = round(sum(scores) / len(scores), 1) if scores else None
 
-    return [_format_student_entry(r, class_avgs.get(r.session_id)) for r in records]
+    punch_map = await _load_punch_map(db, records)
+    return [_format_student_entry(r, class_avgs.get(r.session_id), punch_map) for r in records]
 
 
 async def get_session_weekly(
@@ -148,10 +151,76 @@ async def submit_session_feedback(
     return record
 
 
-def _format_student_entry(r: CommunicationSessionStudent, class_average: float | None = None) -> dict:
+def _attendance_day(r: CommunicationSessionStudent) -> date | None:
+    """實際出席日：有調課則為 reschedule_date，否則為 session 當日。"""
+    if r.reschedule_date:
+        return r.reschedule_date
+    return r.session.entry_date if r.session else None
+
+
+def _punch_match_days(r: CommunicationSessionStudent) -> list[date]:
+    days: list[date] = []
+    day = _attendance_day(r)
+    if day is not None:
+        days.append(day)
+    if r.session and r.session.entry_date and r.session.entry_date != day:
+        days.append(r.session.entry_date)
+    return days
+
+
+async def _load_punch_map(
+    db: AsyncSession, records: list[CommunicationSessionStudent]
+) -> dict[tuple[int, int, date], ClassAttendance]:
+    """逐課打卡（ClassAttendance）索引：(student_id, course_id, attendance_date) → 記錄，
+    只有實際上存在打卡時間的才納入（打卡值優先）。"""
+    days: set[date] = set()
+    for r in records:
+        for day in _punch_match_days(r):
+            days.add(day)
+    if not days:
+        return {}
+    rows = (
+        await db.execute(
+            select(ClassAttendance).where(ClassAttendance.attendance_date.in_(days))
+        )
+    ).scalars().all()
+    return {
+        (ca.student_id, ca.course_id, ca.attendance_date): ca
+        for ca in rows
+        if ca.first_punch is not None or ca.last_punch is not None
+    }
+
+
+def _fmt_punch_hhmm(value) -> str | None:
+    """打卡 datetime → 'HH:MM'（台北時區）。"""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=TAIPEI_TZ)
+    return value.astimezone(TAIPEI_TZ).strftime("%H:%M")
+
+
+def _format_student_entry(
+    r: CommunicationSessionStudent,
+    class_average: float | None = None,
+    punch_map: dict[tuple[int, int, date], ClassAttendance] | None = None,
+) -> dict:
     session = r.session
     course = session.course if session else None
     teacher = course.teacher if course else None
+
+    arrival_time = r.arrival_time
+    departure_time = r.departure_time
+    if punch_map and course is not None:
+        punch = None
+        for day in _punch_match_days(r):
+            candidate = punch_map.get((r.student_id, course.id, day))
+            if candidate is not None:
+                punch = candidate
+                break
+        if punch is not None:
+            arrival_time = _fmt_punch_hhmm(punch.first_punch) or r.arrival_time
+            departure_time = _fmt_punch_hhmm(punch.last_punch) or r.departure_time
 
     custom_scores = {}
     if r.custom_scores:
@@ -170,8 +239,8 @@ def _format_student_entry(r: CommunicationSessionStudent, class_average: float |
         "class_homework": session.class_homework if session else None,
         "class_exam_scope": session.class_exam_scope if session else None,
         "class_announcements": session.class_announcements if session else None,
-        "arrival_time": r.arrival_time,
-        "departure_time": r.departure_time,
+        "arrival_time": arrival_time,
+        "departure_time": departure_time,
         "handout_status": r.handout_status,
         "homework_material": r.homework_material,
         "homework_workbook": r.homework_workbook,
