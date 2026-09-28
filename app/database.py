@@ -87,6 +87,9 @@ async def _add_missing_columns():
             "subtitle": "VARCHAR(200)",
             "mobile_image_url": "VARCHAR(500)",
         },
+        "communication_course_sessions": {
+            "punch_generated": "BOOLEAN NOT NULL DEFAULT 0",
+        },
         "punch_raw_events": {
             "source_sub_code": "INTEGER",
             "port_number": "INTEGER",

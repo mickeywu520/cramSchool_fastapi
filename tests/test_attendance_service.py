@@ -11,6 +11,8 @@ from app.database import Base
 from app.models import (
     AttendanceDaily,
     ClassAttendance,
+    CommunicationCourseSession,
+    CommunicationSessionStudent,
     Course,
     Enrollment,
     LeaveApplication,
@@ -24,6 +26,7 @@ from app.services.attendance_service import (
     get_class_attendance,
     ingest_events,
 )
+from app.services.communication_service import get_session_entries
 
 
 class AttendanceServiceTest(unittest.IsolatedAsyncioTestCase):
@@ -200,6 +203,141 @@ class AttendanceServiceTest(unittest.IsolatedAsyncioTestCase):
                     select(func.count())
                     .select_from(ClassAttendance)
                     .where(ClassAttendance.student_id == third_id)
+                ),
+                0,
+            )
+
+    async def test_punch_creates_session_visible_to_parent(self):
+        first_id, _, _, course_id, _ = await self.seed()
+        async with self.sessions() as db:
+            results = await ingest_events(
+                db,
+                [self.event("parent", f"{self.day.isoformat()}T18:32:00+08:00", "A1111111")],
+            )
+            await db.commit()
+            self.assertEqual(results[0]["status"], "ok")
+
+        async with self.sessions() as db:
+            session = (
+                await db.execute(
+                    select(CommunicationCourseSession).where(
+                        CommunicationCourseSession.course_id == course_id,
+                        CommunicationCourseSession.entry_date == self.day,
+                    )
+                )
+            ).scalar_one()
+            self.assertTrue(session.punch_generated)
+            rows = await get_session_entries(db, first_id, self.day, self.day)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["arrival_time"], "18:32")
+            self.assertEqual(rows[0]["departure_time"], "18:32")
+
+        async with self.sessions() as db:
+            await ingest_events(
+                db,
+                [self.event("parent2", f"{self.day.isoformat()}T19:05:00+08:00", "A1111111")],
+            )
+            await db.commit()
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count()).select_from(CommunicationCourseSession)
+                ),
+                1,
+            )
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count()).select_from(CommunicationSessionStudent)
+                ),
+                1,
+            )
+            rows = await get_session_entries(db, first_id, self.day, self.day)
+            self.assertEqual(rows[0]["arrival_time"], "18:32")
+            self.assertEqual(rows[0]["departure_time"], "19:05")
+
+    async def test_teacher_created_session_is_not_marked_or_overwritten(self):
+        first_id, _, _, course_id, _ = await self.seed()
+        async with self.sessions() as db:
+            session = CommunicationCourseSession(
+                course_id=course_id,
+                entry_date=self.day,
+                class_progress="teacher content",
+            )
+            db.add(session)
+            await db.flush()
+            db.add(CommunicationSessionStudent(session_id=session.id, student_id=first_id))
+            await db.commit()
+
+        async with self.sessions() as db:
+            await ingest_events(
+                db,
+                [self.event("teacher", f"{self.day.isoformat()}T18:32:00+08:00", "A1111111")],
+            )
+            await db.commit()
+
+        async with self.sessions() as db:
+            session = (
+                await db.execute(
+                    select(CommunicationCourseSession).where(
+                        CommunicationCourseSession.course_id == course_id
+                    )
+                )
+            ).scalar_one()
+            self.assertFalse(session.punch_generated)
+            self.assertEqual(session.class_progress, "teacher content")
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count()).select_from(CommunicationSessionStudent)
+                ),
+                1,
+            )
+            rows = await get_session_entries(db, first_id, self.day, self.day)
+            self.assertEqual(rows[0]["arrival_time"], "18:32")
+
+    async def test_inactive_teaching_course_does_not_create_session(self):
+        first_id, _, _, course_id, _ = await self.seed()
+        async with self.sessions() as db:
+            course = await db.get(Course, course_id)
+            course.is_teaching = False
+            await db.commit()
+            results = await ingest_events(
+                db,
+                [self.event("not-teaching", f"{self.day.isoformat()}T18:32:00+08:00", "A1111111")],
+            )
+            await db.commit()
+            self.assertEqual(results[0]["status"], "ok")
+        async with self.sessions() as db:
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count()).select_from(CommunicationCourseSession)
+                ),
+                0,
+            )
+            self.assertEqual(await get_session_entries(db, first_id, self.day, self.day), [])
+
+    async def test_makeup_class_does_not_create_session(self):
+        _, second_id, _, course_id, _ = await self.seed()
+        makeup_day = self.day + timedelta(days=1)
+        async with self.sessions() as db:
+            db.add(
+                MakeupClass(
+                    student_id=second_id,
+                    course_id=course_id,
+                    makeup_date=makeup_day,
+                    start_time=time(18, 0),
+                    end_time=time(19, 0),
+                    status="scheduled",
+                )
+            )
+            await db.commit()
+            await ingest_events(
+                db,
+                [self.event("makeup-session", f"{makeup_day.isoformat()}T18:00:00+08:00", "A2222222")],
+            )
+            await db.commit()
+        async with self.sessions() as db:
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count()).select_from(CommunicationCourseSession)
                 ),
                 0,
             )

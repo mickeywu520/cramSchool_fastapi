@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.attendance import AttendanceDaily, ClassAttendance, PunchRawEvent
+from app.models.communication_session import (
+    CommunicationCourseSession,
+    CommunicationSessionStudent,
+)
 from app.models.course import Course
 from app.models.enrollment import Enrollment
 from app.models.leave import LeaveApplication
@@ -399,6 +403,68 @@ async def _get_or_create_class_record(
     return record
 
 
+async def _ensure_communication_session(
+    db: AsyncSession,
+    student: Student,
+    record: ClassAttendance,
+    occurrence: ClassOccurrence,
+) -> None:
+    """打卡時自動建立聯絡簿 session 列，讓家長與老師頁面即時看到打卡時間。
+
+    家長頁面的資料來源是 communication_session_students，該表原本只有老師
+    手動建立 session 時才會有資料，打卡本身不會寫入；此處在打卡成功的當下
+    補齊 session 與學生的列（冪等），讓打卡時間即時顯示。
+
+    - 只處理 regular occurrence，補課不建立（補課沒有對應的課堂 session）
+    - 只在課程仍在授課時建立，與家長頁面 Course.is_teaching == True 的條件一致
+    - 打卡是關鍵路徑，失敗只記 log 不影響打卡入庫
+    """
+    if occurrence.session_type != "regular":
+        return
+    try:
+        course = await db.get(Course, occurrence.course_id)
+        if course is None or course.is_teaching is not True:
+            return
+
+        result = await db.execute(
+            select(CommunicationCourseSession).where(
+                CommunicationCourseSession.course_id == occurrence.course_id,
+                CommunicationCourseSession.entry_date == occurrence.attendance_date,
+            )
+        )
+        session = result.scalar_one_or_none()
+        if session is None:
+            session = CommunicationCourseSession(
+                course_id=occurrence.course_id,
+                entry_date=occurrence.attendance_date,
+                punch_generated=True,
+            )
+            db.add(session)
+            await db.flush()
+        elif not session.punch_generated:
+            return  # 老師已手動建立，不改動
+
+        student_result = await db.execute(
+            select(CommunicationSessionStudent).where(
+                CommunicationSessionStudent.session_id == session.id,
+                CommunicationSessionStudent.student_id == student.id,
+            )
+        )
+        if student_result.scalar_one_or_none() is None:
+            db.add(CommunicationSessionStudent(
+                session_id=session.id,
+                student_id=student.id,
+            ))
+            await db.flush()
+    except Exception:
+        logger.warning(
+            "punch-generated communication session failed (course=%s, date=%s)",
+            occurrence.course_id,
+            occurrence.attendance_date,
+            exc_info=True,
+        )
+
+
 async def _approved_leave_id(
     db: AsyncSession,
     student_id: int,
@@ -522,6 +588,8 @@ async def ingest_events(db: AsyncSession, events: list[GcpPunchEvent]) -> list[d
         low32 = incoming_low32(event.card.uid_hex, event.card.uid_decimal, hi, lo)
         student = card_map.get(low32) if low32 is not None else None
 
+        record = None
+        occurrence = None
         try:
             async with db.begin_nested():
                 raw = PunchRawEvent(
@@ -561,7 +629,6 @@ async def ingest_events(db: AsyncSession, events: list[GcpPunchEvent]) -> list[d
                     )
                 else:
                     await _update_daily(db, student.id, occurred_at, event.device.ip or None)
-                    record = None
                     if _is_attendance_event(event):
                         occurrence = await _find_occurrence(db, student.id, occurred_at)
                         if occurrence is not None:
@@ -594,6 +661,9 @@ async def ingest_events(db: AsyncSession, events: list[GcpPunchEvent]) -> list[d
             else:
                 results.append(_error_result(event.event_id))
             continue
+
+        if record is not None and occurrence is not None:
+            await _ensure_communication_session(db, student, record, occurrence)
         results.append(result)
 
     await db.flush()

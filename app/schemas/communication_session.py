@@ -81,6 +81,7 @@ class SessionResponse(BaseModel):
     id: int
     course_id: int
     entry_date: date
+    punch_generated: bool = False
     tutoring_threshold: int | None = None
     class_progress: str | None = None
     class_homework: str | None = None
@@ -100,6 +101,7 @@ class SessionListItem(BaseModel):
     entry_date: date
     tutoring_threshold: int | None = None
     student_count: int = 0
+    punch_generated: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

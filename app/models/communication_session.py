@@ -21,6 +21,7 @@ class CommunicationCourseSession(Base):
     class_exam_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     class_announcements: Mapped[str | None] = mapped_column(Text, nullable=True)
     exam_columns: Mapped[str | None] = mapped_column(Text, nullable=True)
+    punch_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
