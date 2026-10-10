@@ -192,6 +192,10 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> dict
         raise UnauthorizedException("Invalid token type")
 
     token_id = payload.get("jti")
+    try:
+        token_id = int(token_id)
+    except (TypeError, ValueError):
+        raise UnauthorizedException("Invalid refresh token")
     result = await db.execute(
         select(RefreshToken).where(
             RefreshToken.id == token_id,
@@ -200,7 +204,15 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> dict
     )
     token_record = result.scalar_one_or_none()
 
-    if not token_record or token_record.expires_at < datetime.now(timezone.utc):
+    if token_record is None:
+        raise UnauthorizedException("Refresh token expired or revoked")
+
+    # SQLite 取回的 datetime 為 naive；統一視為 UTC 再比較，
+    # 否則 naive 與 aware 相比會丟 TypeError（先前 refresh 因此回 500）。
+    expires_at = token_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
         raise UnauthorizedException("Refresh token expired or revoked")
 
     # Revoke old refresh token
@@ -223,6 +235,10 @@ async def logout_user(db: AsyncSession, refresh_token_str: str):
         return
 
     token_id = payload.get("jti")
+    try:
+        token_id = int(token_id)
+    except (TypeError, ValueError):
+        return
     result = await db.execute(
         select(RefreshToken).where(RefreshToken.id == token_id)
     )

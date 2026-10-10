@@ -24,7 +24,9 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def create_refresh_token(user_id: int, token_id: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(user_id), "type": "refresh", "jti": token_id, "exp": expire}
+    # jti 必須是字串：python-jose 解碼時會驗證 “JWT ID must be a string”，
+    # 存 int 會導致 /auth/refresh 解碼失敗（401）。
+    payload = {"sub": str(user_id), "type": "refresh", "jti": str(token_id), "exp": expire}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
