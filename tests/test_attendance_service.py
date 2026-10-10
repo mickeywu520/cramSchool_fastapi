@@ -29,6 +29,15 @@ from app.services.attendance_service import (
 from app.services.communication_service import get_session_entries
 
 
+def _hhmm(dt):
+    """datetime → 'HH:MM'（台北時區；naive 視為台北）。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI_TZ)
+    return dt.astimezone(TAIPEI_TZ).strftime("%H:%M")
+
+
 class AttendanceServiceTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.mkdtemp()
@@ -373,6 +382,132 @@ class AttendanceServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(results[0]["status"], "unknown_card")
             self.assertTrue(results[0]["stored"])
             self.assertEqual(await db.scalar(select(func.count()).select_from(PunchRawEvent)), 2)
+
+    # -- 同日多堂課 + 人臉 + 跨午夜 ---------------------------------------
+
+    async def test_m108_face_is_attendance(self):
+        first_id, _, _, course_id, _ = await self.seed()
+        event = self.event(
+            "face", f"{self.day.isoformat()}T18:32:00+08:00", "A1111111", code="M108"
+        )
+        async with self.sessions() as db:
+            results = await ingest_events(db, [event])
+            await db.commit()
+            self.assertEqual(results[0]["status"], "ok")
+            self.assertEqual(results[0]["course_id"], course_id)
+            self.assertEqual(results[0]["attendance_status"], "on_time")
+
+    async def _seed_two_class_day(self, name, card):
+        async with self.sessions() as db:
+            student = self.student(name, card)
+            course_a = self.course("A", "1800", "1930")
+            course_b = self.course("B", "2000", "2130")
+            db.add_all([student, course_a, course_b])
+            await db.flush()
+            db.add_all(
+                [
+                    Enrollment(student_id=student.id, course_id=course_a.id),
+                    Enrollment(student_id=student.id, course_id=course_b.id),
+                ]
+            )
+            await db.commit()
+            return student.id, course_a.id, course_b.id
+
+    async def test_two_classes_same_day_in_out_by_gap_midpoint(self):
+        student_id, course_a, course_b = await self._seed_two_class_day("gap", "A4444444")
+        day = self.day.isoformat()
+        async with self.sessions() as db:
+            await ingest_events(
+                db,
+                [
+                    self.event("a-in", f"{day}T18:02:00+08:00", "A4444444"),
+                    self.event("a-out", f"{day}T19:40:00+08:00", "A4444444"),
+                    self.event("b-in", f"{day}T20:05:00+08:00", "A4444444"),
+                    self.event("b-out", f"{day}T21:35:00+08:00", "A4444444"),
+                ],
+            )
+            await db.commit()
+            rows = {
+                r.course_id: r
+                for r in (
+                    await db.execute(
+                        select(ClassAttendance).where(ClassAttendance.student_id == student_id)
+                    )
+                )
+                .scalars()
+                .all()
+            }
+            self.assertEqual(_hhmm(rows[course_a].first_punch), "18:02")
+            self.assertEqual(_hhmm(rows[course_a].last_punch), "19:40")
+            self.assertEqual(_hhmm(rows[course_b].first_punch), "20:05")
+            self.assertEqual(_hhmm(rows[course_b].last_punch), "21:35")
+
+    async def test_departure_after_midpoint_counts_as_next_class_arrival(self):
+        # A=18:00-19:30、B=20:00-21:30，中間點 19:45。19:50 的打卡應歸 B（到班），
+        # A 不記該筆為離班（last_punch 仍為 18:00）。
+        student_id, course_a, course_b = await self._seed_two_class_day("mid", "A5555555")
+        day = self.day.isoformat()
+        async with self.sessions() as db:
+            await ingest_events(
+                db,
+                [
+                    self.event("in", f"{day}T18:00:00+08:00", "A5555555"),
+                    self.event("between", f"{day}T19:50:00+08:00", "A5555555"),
+                ],
+            )
+            await db.commit()
+            rows = {
+                r.course_id: r
+                for r in (
+                    await db.execute(
+                        select(ClassAttendance).where(ClassAttendance.student_id == student_id)
+                    )
+                )
+                .scalars()
+                .all()
+            }
+            self.assertEqual(_hhmm(rows[course_a].first_punch), "18:00")
+            self.assertEqual(_hhmm(rows[course_a].last_punch), "18:00")
+            self.assertEqual(_hhmm(rows[course_b].first_punch), "19:50")
+
+    async def test_cross_midnight_class_is_matched(self):
+        # 23:00 跨到隔天 00:30 的班，隔天 00:10 打卡仍應命中（跨午夜防呆）
+        async with self.sessions() as db:
+            student = self.student("night", "A6666666")
+            course = self.course("night", "2300", "0030")
+            db.add_all([student, course])
+            await db.flush()
+            db.add(Enrollment(student_id=student.id, course_id=course.id))
+            await db.commit()
+            student_id, course_id = student.id, course.id
+        next_day = (self.day + timedelta(days=1)).isoformat()
+        async with self.sessions() as db:
+            results = await ingest_events(
+                db, [self.event("midnight", f"{next_day}T00:10:00+08:00", "A6666666")]
+            )
+            await db.commit()
+            self.assertEqual(results[0]["status"], "ok")
+            self.assertEqual(results[0]["course_id"], course_id)
+            self.assertEqual(results[0]["session_type"], "regular")
+
+    async def test_punch_far_from_any_class_is_unmatched(self):
+        first_id, _, _, _, _ = await self.seed()
+        async with self.sessions() as db:
+            results = await ingest_events(
+                db, [self.event("far", f"{self.day.isoformat()}T14:00:00+08:00", "A1111111")]
+            )
+            await db.commit()
+            self.assertEqual(results[0]["status"], "ok")
+            self.assertEqual(results[0]["attendance_status"], "unmatched")
+            self.assertIsNone(results[0]["class_attendance_id"])
+            self.assertEqual(
+                await db.scalar(
+                    select(func.count())
+                    .select_from(ClassAttendance)
+                    .where(ClassAttendance.student_id == first_id)
+                ),
+                0,
+            )
 
 
 if __name__ == "__main__":

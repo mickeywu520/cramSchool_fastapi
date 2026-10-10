@@ -25,7 +25,10 @@ from app.schemas.punch import GcpPunchEvent
 logger = logging.getLogger(__name__)
 
 TAIPEI_TZ = timezone(timedelta(hours=8))
-ATTENDANCE_EVENT_CODES = {"M11", "M03"}
+# 會被計入課程出勤的事件碼：
+#   M11 = 正常刷卡進出，M108 = 人臉辨識成功（receiver 白名單），
+#   M03 = 無效卡（保留防呆：卡號若在後台名單仍計入）。
+ATTENDANCE_EVENT_CODES = {"M11", "M03", "M108"}
 
 
 @dataclass(frozen=True)
@@ -308,20 +311,61 @@ def _occurrence_rank(occurrence: ClassOccurrence, occurred_at: datetime) -> tupl
     )
 
 
+def _owning_band(
+    occurrences: list[ClassOccurrence],
+    index: int,
+    before: timedelta,
+    after: timedelta,
+) -> tuple[datetime, datetime]:
+    """回傳第 index 個場次「擁有的時間帶」[lower, upper]。
+
+    - 基本帶 = [start - before, end + after]（BEFORE/AFTER 設定）
+    - 與相鄰場次的交界取「兩堂中間點」，避免相鄰課程互相搶打卡
+      （例：18:00-19:30 與 20:00-21:30，中間點 19:45；19:50 的打卡歸後一堂）。
+    """
+    occurrence = occurrences[index]
+    lower = occurrence.start_at - before
+    upper = occurrence.end_at + after
+
+    if index > 0:
+        prev_end = occurrences[index - 1].end_at
+        if occurrence.start_at > prev_end:
+            midpoint = prev_end + (occurrence.start_at - prev_end) / 2
+        else:  # 重疊（理論上不該發生）：以本堂開始為界
+            midpoint = occurrence.start_at
+        lower = max(lower, midpoint)
+
+    if index < len(occurrences) - 1:
+        next_start = occurrences[index + 1].start_at
+        if next_start > occurrence.end_at:
+            midpoint = occurrence.end_at + (next_start - occurrence.end_at) / 2
+        else:  # 重疊：以本堂結束為界
+            midpoint = occurrence.end_at
+        upper = min(upper, midpoint)
+
+    return lower, upper
+
+
 async def _find_occurrence(
     db: AsyncSession,
     student_id: int,
     occurred_at: datetime,
 ) -> ClassOccurrence | None:
     day = occurred_at.astimezone(TAIPEI_TZ).date()
-    occurrences = await _load_occurrences(db, student_id, day)
+    # 跨午夜防呆：同時載入「前一天」場次，讓 23:00 跨到隔天結束的課程也能被命中
+    occurrences = await _load_occurrences(db, student_id, day - timedelta(days=1))
+    occurrences += await _load_occurrences(db, student_id, day)
+    if not occurrences:
+        return None
+    occurrences.sort(key=lambda item: item.start_at)
+
     before = timedelta(minutes=max(0, settings.PUNCH_ATTENDANCE_BEFORE_MINUTES))
     after = timedelta(minutes=max(0, settings.PUNCH_ATTENDANCE_AFTER_MINUTES))
-    eligible = [
-        occurrence
-        for occurrence in occurrences
-        if occurrence.start_at - before <= occurred_at <= occurrence.end_at + after
-    ]
+    eligible = []
+    for index, occurrence in enumerate(occurrences):
+        lower, upper = _owning_band(occurrences, index, before, after)
+        if lower <= occurred_at <= upper:
+            eligible.append(occurrence)
     if not eligible:
         return None
     return min(eligible, key=lambda item: _occurrence_rank(item, occurred_at))
