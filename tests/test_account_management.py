@@ -112,8 +112,8 @@ class AccountManagementTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             self.assertIsNone(await db.get(User, parent_id))
             self.assertIsNone(await db.get(Student, student_id))
-            # 學生專屬帳號若只依附此學生也應被刪除（parent 帳號刪除不含 student 帳號）
-            self.assertIsNotNone(await db.get(User, student_user_id))
+            # 學生的身分證帳號已無依附學生 → 一併刪除（不再留孤兒空帳號列）
+            self.assertIsNone(await db.get(User, student_user_id))
             for model in (Enrollment, CommunicationSessionStudent, CommunicationBookEntry, HomeworkRecord):
                 count = await db.scalar(select(func.count()).select_from(model))
                 self.assertEqual(count, 0, f"{model.__tablename__} 未清空")

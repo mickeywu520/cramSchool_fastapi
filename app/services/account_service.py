@@ -170,6 +170,8 @@ async def delete_account(db: AsyncSession, user_id: int) -> dict:
         )
 
     student_ids = [s.id for s in students]
+    # 被刪學生的專屬身分證帳號（students.user_id）；刪完學生後若無其他學生依附即一併刪除
+    linked_user_ids = {s.user_id for s in students if s.user_id is not None}
 
     if student_ids:
         # 聯絡簿子表 → 聯絡簿主表（homework / reminder / parent_feedback 參照主表）
@@ -244,6 +246,23 @@ async def delete_account(db: AsyncSession, user_id: int) -> dict:
             delete(Enrollment).where(Enrollment.student_id.in_(student_ids))
         )
         await db.execute(delete(Student).where(Student.id.in_(student_ids)))
+
+        # 清掉因學生被刪而無依附學生的身分證帳號，避免列表出現空帳號列。
+        # 仍被其他同身分證學生共用者保留。
+        for uid in linked_user_ids:
+            if uid == user_id:
+                continue
+            remaining = (
+                await db.execute(
+                    select(Student.id).where(Student.user_id == uid).limit(1)
+                )
+            ).scalar_one_or_none()
+            if remaining is None:
+                await db.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
+                await db.execute(
+                    delete(PasswordResetToken).where(PasswordResetToken.user_id == uid)
+                )
+                await db.execute(delete(User).where(User.id == uid))
 
     await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
     await db.execute(
