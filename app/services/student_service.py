@@ -227,6 +227,16 @@ async def get_my_score_history(db: AsyncSession, user_id: int, student_id: int |
     history = []
     for enrollment in enrollments:
         course = enrollment.course
+        active_ids = set(
+            (
+                await db.execute(
+                    select(Enrollment.student_id).where(
+                        Enrollment.course_id == course.id,
+                        Enrollment.status == "active",
+                    )
+                )
+            ).scalars().all()
+        )
         session_result = await db.execute(
             select(CommunicationCourseSession)
             .where(CommunicationCourseSession.course_id == course.id)
@@ -247,7 +257,7 @@ async def get_my_score_history(db: AsyncSession, user_id: int, student_id: int |
             class_scores = [
                 r.exam_score
                 for r in session.student_records
-                if r.exam_score is not None
+                if r.exam_score is not None and r.student_id in active_ids
             ]
             class_average = (
                 round(sum(class_scores) / len(class_scores), 1) if class_scores else None

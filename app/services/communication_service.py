@@ -14,6 +14,7 @@ from app.models.communication_session import (
     CommunicationSessionStudent,
 )
 from app.models.course import Course
+from app.models.enrollment import Enrollment
 from app.services.attendance_service import TAIPEI_TZ
 from app.models.homework import HomeworkRecord
 from app.models.parent_feedback import ParentFeedback
@@ -23,6 +24,26 @@ from app.models.teacher import Teacher
 from app.utils.exceptions import NotFoundException
 
 # ── New: Course-session based queries ──
+
+
+async def _active_student_ids(
+    db: AsyncSession, course_ids: set[int]
+) -> dict[int, set[int]]:
+    """回傳各課程目前 active 選課的學生 id（供過濾已退選學生的紀錄）。"""
+    if not course_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Enrollment.course_id, Enrollment.student_id).where(
+                Enrollment.course_id.in_(course_ids),
+                Enrollment.status == "active",
+            )
+        )
+    ).all()
+    result: dict[int, set[int]] = {}
+    for course_id, student_id in rows:
+        result.setdefault(course_id, set()).add(student_id)
+    return result
 
 
 async def get_session_entries(
@@ -67,21 +88,44 @@ async def get_session_entries(
     if not records:
         return []
 
+    # 只顯示目前仍在該課程 active 選課的紀錄（退選者隱藏，DB 資料保留）
+    enrolled_course_ids = set(
+        (
+            await db.execute(
+                select(Enrollment.course_id).where(
+                    Enrollment.student_id == student_id,
+                    Enrollment.status == "active",
+                )
+            )
+        ).scalars().all()
+    )
+    records = [
+        r for r in records if r.session and r.session.course_id in enrolled_course_ids
+    ]
+    if not records:
+        return []
+
     session_ids = sorted({r.session_id for r in records if r.session_id})
+    course_by_session = {r.session_id: r.session.course_id for r in records if r.session}
+    active_by_course = await _active_student_ids(db, set(course_by_session.values()))
     class_avgs: dict[int, float | None] = {}
     if session_ids:
         rows = (
             await db.execute(
                 select(
                     CommunicationSessionStudent.session_id,
+                    CommunicationSessionStudent.student_id,
                     CommunicationSessionStudent.exam_score,
                 ).where(CommunicationSessionStudent.session_id.in_(session_ids))
             )
         ).all()
         by_session: dict[int, list[int]] = {}
-        for sid, score in rows:
-            if score is not None:
-                by_session.setdefault(sid, []).append(score)
+        for sid, st_id, score in rows:
+            if score is None:
+                continue
+            if st_id not in active_by_course.get(course_by_session.get(sid, -1), set()):
+                continue
+            by_session.setdefault(sid, []).append(score)
         for sid, scores in by_session.items():
             class_avgs[sid] = round(sum(scores) / len(scores), 1) if scores else None
 
@@ -114,6 +158,16 @@ async def get_session_weekly(
     )
     result = await db.execute(query)
     records = result.scalars().all()
+    enrolled_course_ids = set(
+        (
+            await db.execute(
+                select(Enrollment.course_id).where(
+                    Enrollment.student_id == student_id,
+                    Enrollment.status == "active",
+                )
+            )
+        ).scalars().all()
+    )
     return [
         {
             "id": r.id,
@@ -121,7 +175,7 @@ async def get_session_weekly(
             "is_signed": r.parent_signed,
         }
         for r in records
-        if r.session
+        if r.session and r.session.course_id in enrolled_course_ids
     ]
 
 

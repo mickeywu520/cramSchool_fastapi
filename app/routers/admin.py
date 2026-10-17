@@ -673,13 +673,23 @@ async def list_sessions(
         .order_by(CommunicationCourseSession.entry_date.desc())
     )
     sessions = result.scalars().all()
+    enrolled_ids = set(
+        (
+            await db.execute(
+                select(Enrollment.student_id).where(
+                    Enrollment.course_id == course_id,
+                    Enrollment.status == "active",
+                )
+            )
+        ).scalars().all()
+    )
     items = []
     for s in sessions:
         cnt_result = await db.execute(
-            select(CommunicationSessionStudent)
+            select(CommunicationSessionStudent.student_id)
             .where(CommunicationSessionStudent.session_id == s.id)
         )
-        student_count = len(cnt_result.scalars().all())
+        student_count = sum(1 for sid in cnt_result.scalars().all() if sid in enrolled_ids)
         items.append(SessionListItem(
             id=s.id,
             course_id=s.course_id,
@@ -725,14 +735,46 @@ def _add_student_records(db: AsyncSession, session, data) -> None:
 
 
 async def _replace_student_records(db: AsyncSession, session, data) -> None:
-    old = await db.execute(
-        select(CommunicationSessionStudent)
-        .where(CommunicationSessionStudent.session_id == session.id)
-    )
-    for rec in old.scalars().all():
-        await db.delete(rec)
+    """更新/新增名單中的學生，但不刪除未列出的既有紀錄。
+
+    已退選的學生在讀取時會被過濾掉；若照舊「先刪光再重建」，這裡會把
+    他們的歷史紀錄一併刪除。改為 upsert，保留既有紀錄（含退選者），
+    是否顯示交由讀取端依目前選課狀態決定。
+    """
+    existing = {
+        rec.student_id: rec
+        for rec in (
+            await db.execute(
+                select(CommunicationSessionStudent)
+                .where(CommunicationSessionStudent.session_id == session.id)
+            )
+        ).scalars().all()
+    }
+    for sd in data.students:
+        rec = existing.get(sd.student_id)
+        if rec is None:
+            rec = CommunicationSessionStudent(
+                session_id=session.id, student_id=sd.student_id
+            )
+            db.add(rec)
+        rec.arrival_time = sd.arrival_time
+        rec.departure_time = sd.departure_time
+        rec.progress = sd.progress
+        rec.homework = sd.homework
+        rec.vocab = sd.vocab
+        rec.exam_scope = sd.exam_scope
+        rec.announcements = sd.announcements
+        rec.handout_status = sd.handout_status
+        rec.homework_material = sd.homework_material
+        rec.homework_workbook = sd.homework_workbook
+        rec.exam_score = sd.exam_score
+        rec.custom_scores = (
+            json.dumps(sd.custom_scores, ensure_ascii=False) if sd.custom_scores else "{}"
+        )
+        rec.tutoring_attendance = _tutoring_auto(sd.exam_score, session.tutoring_threshold)
+        rec.reschedule_date = sd.reschedule_date
+        rec.notes = sd.notes
     await db.flush()
-    _add_student_records(db, session, data)
 
 
 async def _apply_session_content(db: AsyncSession, session, data) -> None:
@@ -898,8 +940,21 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
 
     exam_cols = _parse_exam_columns(session.exam_columns)
     punch_map = await _session_punch_map(db, session)
+    # 只顯示目前仍在此課程 active 選課的學生（退選者保留 DB 紀錄但不顯示）
+    enrolled_ids = set(
+        (
+            await db.execute(
+                select(Enrollment.student_id).where(
+                    Enrollment.course_id == session.course_id,
+                    Enrollment.status == "active",
+                )
+            )
+        ).scalars().all()
+    )
     students = []
     for sr in session.student_records:
+        if sr.student_id not in enrolled_ids:
+            continue
         custom_scores = {}
         if sr.custom_scores:
             try:
