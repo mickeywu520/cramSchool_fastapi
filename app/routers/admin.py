@@ -25,6 +25,7 @@ from app.models.makeup import MakeupClass
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User
+from app.schemas.account import AccountListItem
 from app.schemas.admin_user import (
     AdminUserCreateRequest,
     AdminUserResetPasswordRequest,
@@ -51,7 +52,7 @@ from app.schemas.course import (
     EnrollmentResponse,
 )
 from app.schemas.student import FollowupUpdateRequest, StudentRegistrationResponse, StudentRegistrationUpdateRequest
-from app.services import communication_service
+from app.services import account_service, communication_service
 from app.services.communication_service import _fmt_punch_hhmm
 
 logger = logging.getLogger(__name__)
@@ -1065,3 +1066,28 @@ async def reset_admin_user_password(
     user.password_hash = hash_password(data.password)
     await db.commit()
     return {"success": True, "message": "密碼已重設"}
+
+
+# ── Parent / Student Account Management ──
+
+@router.get("/accounts", response_model=list[AccountListItem])
+async def list_parent_student_accounts(
+    account_type: str | None = Query(None, description="parent 或 student"),
+    search: str | None = Query(None, description="姓名/帳號/身分證關鍵字"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """列出家長/學生登入帳號（內部帳號不含在內），附掛依附的學生。"""
+    return await account_service.list_accounts(db, account_type=account_type, search=search)
+
+
+@router.delete("/accounts/{user_id}")
+async def delete_parent_student_account(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """永久刪除家長/學生帳號及其依附學生（學生仍在課程中會回 409，附課程清單）。"""
+    result = await account_service.delete_account(db, user_id)
+    await db.commit()
+    return result
