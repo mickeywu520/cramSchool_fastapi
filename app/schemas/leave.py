@@ -31,6 +31,9 @@ class LeaveApplicationResponse(BaseModel):
     requested_makeup_date: date | None = None
     requested_makeup_start: str | None = None
     requested_makeup_end: str | None = None
+    # 待審核清單用：家長選的補課時段現在還剩幾位（核准前先讓老師看出已額滿）
+    requested_seats_left: int | None = None
+    requested_slot_full: bool | None = None
     review_note: str | None = None
     created_at: datetime
 

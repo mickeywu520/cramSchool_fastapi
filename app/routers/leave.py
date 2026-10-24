@@ -23,6 +23,7 @@ from app.schemas.leave import (
     ReviewRequest,
 )
 from app.services import leave_service
+from app.services import makeup_room_service
 
 router = APIRouter(prefix="/leave", tags=["Leave & Makeup"])
 
@@ -149,7 +150,19 @@ async def get_pending(
     current_user: User = Depends(require_teacher_or_admin),
 ):
     applications = await leave_service.get_pending_applications(db)
-    items = [_leave_dict(a) for a in applications]
+    items = []
+    for a in applications:
+        item = _leave_dict(a)
+        # 核准前先算一次名額：待審核期間別人可能已把該時段排滿，
+        # 讓老師在按「核准」之前就看得到，而不是按下去才吃 409。
+        if a.requested_room and a.requested_makeup_date and a.requested_makeup_start:
+            booked = await makeup_room_service.count_booked(
+                db, a.requested_room.id, a.requested_makeup_date, a.requested_makeup_start
+            )
+            left = max(a.requested_room.capacity - booked, 0)
+            item["requested_seats_left"] = left
+            item["requested_slot_full"] = left <= 0
+        items.append(item)
     return {"total": len(items), "applications": items}
 
 
