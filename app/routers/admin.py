@@ -925,6 +925,33 @@ def _punch_for_student_record(
     return None
 
 
+async def _session_leave_map(
+    db: AsyncSession, session
+) -> dict[int, tuple[LeaveApplication, MakeupClass | None]]:
+    """這堂課（課程 + 上課日期）的請假／補課狀態，key = student_id。
+
+    只算 pending / approved；已駁回視同正常上課。已核准優先於待審核。
+    """
+    rows = (
+        await db.execute(
+            select(LeaveApplication, MakeupClass)
+            .outerjoin(MakeupClass, MakeupClass.leave_id == LeaveApplication.id)
+            .where(
+                LeaveApplication.course_id == session.course_id,
+                LeaveApplication.leave_date == session.entry_date,
+                LeaveApplication.status.in_(("pending", "approved")),
+            )
+        )
+    ).all()
+    result: dict[int, tuple[LeaveApplication, MakeupClass | None]] = {}
+    for leave, makeup in rows:
+        current = result.get(leave.student_id)
+        if current and current[0].status == "approved":
+            continue
+        result[leave.student_id] = (leave, makeup)
+    return result
+
+
 async def _build_session_response(db: AsyncSession, session_id: int) -> SessionResponse:
     result = await db.execute(
         select(CommunicationCourseSession)
@@ -940,6 +967,7 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
 
     exam_cols = _parse_exam_columns(session.exam_columns)
     punch_map = await _session_punch_map(db, session)
+    leave_map = await _session_leave_map(db, session)
     # 只顯示目前仍在此課程 active 選課的學生（退選者保留 DB 紀錄但不顯示）
     enrolled_ids = set(
         (
@@ -962,6 +990,9 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
             except json.JSONDecodeError:
                 custom_scores = {}
         punch = _punch_for_student_record(punch_map, sr, session)
+        leave_entry = leave_map.get(sr.student_id)
+        leave = leave_entry[0] if leave_entry else None
+        makeup = leave_entry[1] if leave_entry else None
         arrival_time = (
             _fmt_punch_hhmm(punch.first_punch)
             if punch and punch.first_punch is not None
@@ -994,6 +1025,19 @@ async def _build_session_response(db: AsyncSession, session_id: int) -> SessionR
             parent_feedback=sr.parent_feedback,
             parent_signed=sr.parent_signed,
             parent_signed_at=sr.parent_signed_at,
+            leave_status=leave.status if leave else None,
+            leave_type=leave.leave_type if leave else None,
+            leave_reason=leave.reason if leave else None,
+            makeup_date=makeup.makeup_date if makeup else None,
+            makeup_room=makeup.classroom if makeup else None,
+            makeup_start=(
+                makeup.start_time.strftime("%H:%M")
+                if makeup and makeup.start_time
+                else None
+            ),
+            makeup_end=(
+                makeup.end_time.strftime("%H:%M") if makeup and makeup.end_time else None
+            ),
         ))
 
     return SessionResponse(

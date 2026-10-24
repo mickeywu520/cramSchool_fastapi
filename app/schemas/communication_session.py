@@ -73,6 +73,15 @@ class StudentSessionResponse(BaseModel):
     parent_feedback: str | None = None
     parent_signed: bool = False
     parent_signed_at: datetime | None = None
+    # 本堂課的請假狀態（approved 時前端鎖住輸入；pending 只提示）
+    leave_status: str | None = None
+    leave_type: str | None = None
+    leave_reason: str | None = None
+    # 已核准的補課資訊（給老師參考，例如「補 11/07 補A 14:00-16:00」）
+    makeup_date: date | None = None
+    makeup_room: str | None = None
+    makeup_start: str | None = None
+    makeup_end: str | None = None
 
     model_config = {"from_attributes": True}
 
