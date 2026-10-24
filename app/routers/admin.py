@@ -1174,7 +1174,7 @@ async def list_parent_student_accounts(
     account_type: str | None = Query(None, description="parent 或 student"),
     search: str | None = Query(None, description="姓名/帳號/身分證關鍵字"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """列出家長/學生登入帳號（內部帳號不含在內），附掛依附的學生。"""
     return await account_service.list_accounts(db, account_type=account_type, search=search)
@@ -1184,7 +1184,7 @@ async def list_parent_student_accounts(
 async def delete_parent_student_account(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """永久刪除家長/學生帳號及其依附學生（學生仍在課程中會回 409，附課程清單）。"""
     result = await account_service.delete_account(db, user_id)
