@@ -1,13 +1,17 @@
 """Leave & makeup router."""
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_middleware import require_student, require_teacher_or_admin
 from app.models.student import Student
 from app.models.user import User
+from app.utils.exceptions import ConflictException
 from app.schemas.leave import (
     LeaveApplicationListResponse,
     LeaveApplicationRequest,
@@ -15,6 +19,7 @@ from app.schemas.leave import (
     LeaveRulesResponse,
     MakeupClassCreateRequest,
     MakeupClassResponse,
+    MakeupOptionResponse,
     ReviewRequest,
 )
 from app.services import leave_service
@@ -49,6 +54,30 @@ async def _resolve_student(
     return student
 
 
+def _leave_dict(leave) -> dict:
+    """統一的請假申請序列化（含課程名稱、學生姓名與家長指定的補課時段）。"""
+    return {
+        "id": leave.id,
+        "student_id": leave.student_id,
+        "course_id": leave.course_id,
+        "leave_date": leave.leave_date,
+        "leave_type": leave.leave_type,
+        "reason": leave.reason,
+        "status": leave.status,
+        "course_name": leave.course.name if leave.course else None,
+        "student_name": leave.student.student_name if leave.student else None,
+        "requested_makeup_date": leave.requested_makeup_date,
+        "requested_makeup_start": (
+            leave.requested_makeup_start.strftime("%H:%M") if leave.requested_makeup_start else None
+        ),
+        "requested_makeup_end": (
+            leave.requested_makeup_end.strftime("%H:%M") if leave.requested_makeup_end else None
+        ),
+        "review_note": leave.review_note,
+        "created_at": leave.created_at,
+    }
+
+
 # Student endpoints
 @router.post("/applications", response_model=LeaveApplicationResponse, status_code=201)
 async def create_application(
@@ -60,11 +89,9 @@ async def create_application(
     student = await _resolve_student(db, current_user.id, student_id)
     leave = await leave_service.create_leave_application(db, student.id, data.model_dump())
     await db.commit()
-    return {
-        "id": leave.id, "leave_date": leave.leave_date, "leave_type": leave.leave_type,
-        "reason": leave.reason, "status": leave.status, "course_name": None,
-        "created_at": leave.created_at,
-    }
+    # 重新載入以帶出 course / student 關聯（async session 不可 lazy load）
+    leave = await leave_service.get_application_by_id(db, leave.id, student.id)
+    return _leave_dict(leave)
 
 
 @router.get("/applications", response_model=LeaveApplicationListResponse)
@@ -75,14 +102,7 @@ async def get_my_applications(
 ):
     student = await _resolve_student(db, current_user.id, student_id)
     applications = await leave_service.get_my_applications(db, student.id)
-    items = []
-    for a in applications:
-        items.append({
-            "id": a.id, "leave_date": a.leave_date, "leave_type": a.leave_type,
-            "reason": a.reason, "status": a.status,
-            "course_name": a.course.name if a.course else None,
-            "created_at": a.created_at,
-        })
+    items = [_leave_dict(a) for a in applications]
     return {"total": len(items), "applications": items}
 
 
@@ -97,12 +117,7 @@ async def update_application(
     student = await _resolve_student(db, current_user.id, student_id)
     leave = await leave_service.update_application(db, application_id, student.id, data.model_dump())
     await db.commit()
-    return {
-        "id": leave.id, "leave_date": leave.leave_date, "leave_type": leave.leave_type,
-        "reason": leave.reason, "status": leave.status,
-        "course_name": leave.course.name if leave.course else None,
-        "created_at": leave.created_at,
-    }
+    return _leave_dict(leave)
 
 
 @router.delete("/applications/{application_id}")
@@ -130,14 +145,7 @@ async def get_pending(
     current_user: User = Depends(require_teacher_or_admin),
 ):
     applications = await leave_service.get_pending_applications(db)
-    items = []
-    for a in applications:
-        items.append({
-            "id": a.id, "leave_date": a.leave_date, "leave_type": a.leave_type,
-            "reason": a.reason, "status": a.status,
-            "course_name": a.course.name if a.course else None,
-            "created_at": a.created_at,
-        })
+    items = [_leave_dict(a) for a in applications]
     return {"total": len(items), "applications": items}
 
 
@@ -148,12 +156,32 @@ async def review_application(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    await leave_service.review_application(db, application_id, current_user.id, data.status)
-    await db.commit()
-    return {"success": True, "message": f"已{data.status}"}
+    # 核准時會同步建立家長指定的補課紀錄，IntegrityError 一律轉 409
+    try:
+        leave = await leave_service.review_application(
+            db, application_id, current_user.id, data.status, data.reason
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictException("此請假申請已安排過補課")
+    message = "已核准請假並完成補課安排" if data.status == "approved" else "已駁回請假申請"
+    return {"success": True, "message": message, "status": leave.status}
 
 
 # Makeup endpoints
+@router.get("/makeup-options", response_model=list[MakeupOptionResponse])
+async def get_makeup_options(
+    course_id: int,
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_student),
+):
+    """家長可選的補課場次（同一門課在指定區間內的上課日）。"""
+    return await leave_service.list_makeup_options(db, course_id, date_from, date_to)
+
+
 @router.get("/makeup", response_model=list[MakeupClassResponse])
 async def get_my_makeup(
     student_id: int | None = Query(None),
@@ -169,7 +197,8 @@ async def get_my_makeup(
             "makeup_date": m.makeup_date,
             "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
             "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
-            "classroom": m.classroom, "status": m.status, "notes": m.notes,
+            "classroom": m.classroom, "status": m.status,
+            "requested_by": m.requested_by or "teacher", "notes": m.notes,
         }
         for m in classes
     ]
@@ -190,7 +219,8 @@ async def get_upcoming_makeup(
             "makeup_date": m.makeup_date,
             "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
             "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
-            "classroom": m.classroom, "status": m.status, "notes": m.notes,
+            "classroom": m.classroom, "status": m.status,
+            "requested_by": m.requested_by or "teacher", "notes": m.notes,
         }
         for m in classes
     ]
@@ -202,11 +232,17 @@ async def create_makeup(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
-    m = await leave_service.create_makeup_class(db, data.model_dump())
-    await db.commit()
+    # flush 在 service 內就會觸發 unique 約束，因此 try 必須涵蓋整個呼叫
+    try:
+        m = await leave_service.create_makeup_class(db, data.model_dump())
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictException("此請假申請已安排過補課")
+    m = await leave_service.get_makeup_by_id(db, m.id)
     return {
         "id": m.id, "leave_id": m.leave_id, "course_id": m.course_id,
-        "course_name": None, "makeup_date": m.makeup_date,
+        "course_name": m.course.name if m.course else None, "makeup_date": m.makeup_date,
         "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
         "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
         "classroom": m.classroom, "status": m.status, "notes": m.notes,

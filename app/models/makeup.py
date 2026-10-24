@@ -20,6 +20,8 @@ class MakeupClass(Base):
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
     classroom: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    # 誰指定這個補課時段：parent（家長請假時選的） / teacher（老師排的）
+    requested_by: Mapped[str] = mapped_column(String(20), default="teacher")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

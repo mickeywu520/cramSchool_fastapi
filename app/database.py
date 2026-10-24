@@ -95,6 +95,15 @@ async def _add_missing_columns():
             "port_number": "INTEGER",
             "class_attendance_id": "INTEGER REFERENCES class_attendance(id)",
         },
+        "leave_applications": {
+            "requested_makeup_date": "DATE",
+            "requested_makeup_start": "TIME",
+            "requested_makeup_end": "TIME",
+            "review_note": "TEXT",
+        },
+        "makeup_classes": {
+            "requested_by": "VARCHAR(20) NOT NULL DEFAULT 'teacher'",
+        },
     }
     async with engine.begin() as conn:
         for table, columns in table_columns.items():
