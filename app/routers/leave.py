@@ -144,18 +144,21 @@ async def get_rules():
 
 
 # Teacher/Admin endpoints
-@router.get("/pending", response_model=LeaveApplicationListResponse)
-async def get_pending(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin),
-):
-    applications = await leave_service.get_pending_applications(db)
+async def _with_slot_flags(db: AsyncSession, applications) -> list[dict]:
+    """把請假單轉成 dict，並為待審核的補課場次算剩餘名額。
+
+    核准前先算一次名額：待審核期間別人可能已把該時段排滿，
+    讓老師在按「核准」之前就看得到，而不是按下去才吃 409。
+    """
     items = []
     for a in applications:
         item = _leave_dict(a)
-        # 核准前先算一次名額：待審核期間別人可能已把該時段排滿，
-        # 讓老師在按「核准」之前就看得到，而不是按下去才吃 409。
-        if a.requested_room and a.requested_makeup_date and a.requested_makeup_start:
+        if (
+            a.status == "pending"
+            and a.requested_room
+            and a.requested_makeup_date
+            and a.requested_makeup_start
+        ):
             booked = await makeup_room_service.count_booked(
                 db, a.requested_room.id, a.requested_makeup_date, a.requested_makeup_start
             )
@@ -163,6 +166,29 @@ async def get_pending(
             item["requested_seats_left"] = left
             item["requested_slot_full"] = left <= 0
         items.append(item)
+    return items
+
+
+@router.get("/pending", response_model=LeaveApplicationListResponse)
+async def get_pending(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    applications = await leave_service.get_pending_applications(db)
+    items = await _with_slot_flags(db, applications)
+    return {"total": len(items), "applications": items}
+
+
+@router.get("/applications/all", response_model=LeaveApplicationListResponse)
+async def get_all_applications(
+    status_filter: str | None = Query(None, alias="status"),
+    limit: int = Query(500, ge=1, le=2000),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    """後台清單用：已核准／已駁回的歷史紀錄也回傳（新到舊）。"""
+    applications = await leave_service.get_all_applications(db, status_filter, limit)
+    items = await _with_slot_flags(db, applications)
     return {"total": len(items), "applications": items}
 
 

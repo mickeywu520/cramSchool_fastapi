@@ -151,6 +151,26 @@ async def get_pending_applications(db: AsyncSession) -> list[LeaveApplication]:
     return result.scalars().all()
 
 
+async def get_all_applications(
+    db: AsyncSession, status: str | None = None, limit: int = 500
+) -> list[LeaveApplication]:
+    """後台清單：含已核准／已駁回（新到舊），讓頁籤重整後仍看得到歷史。"""
+    stmt = (
+        select(LeaveApplication)
+        .options(
+            selectinload(LeaveApplication.course),
+            selectinload(LeaveApplication.student),
+            selectinload(LeaveApplication.requested_room),
+        )
+        .order_by(LeaveApplication.created_at.desc())
+        .limit(limit)
+    )
+    if status:
+        stmt = stmt.where(LeaveApplication.status == status)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 async def _create_requested_makeup(db: AsyncSession, leave: LeaveApplication) -> MakeupClass | None:
     """核准請假時，把家長指定的補課教室場次寫成正式補課紀錄。"""
     if leave.course_id is None:
