@@ -7,6 +7,7 @@ from app.models.course import Course
 from app.models.enrollment import Enrollment
 from app.models.leave import LeaveApplication
 from app.models.makeup import MakeupClass
+from app.models.makeup_room import MakeupRoom, MakeupRoomSlot
 from app.models.communication import CommunicationBookEntry
 from app.models.homework import HomeworkRecord
 from app.models.reminder import Reminder
@@ -31,6 +32,8 @@ __all__ = [
     "Enrollment",
     "LeaveApplication",
     "MakeupClass",
+    "MakeupRoom",
+    "MakeupRoomSlot",
     "CommunicationBookEntry",
     "HomeworkRecord",
     "Reminder",

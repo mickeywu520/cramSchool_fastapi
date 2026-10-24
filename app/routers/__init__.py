@@ -6,6 +6,7 @@ from app.routers.student import router as student_router
 from app.routers.teacher import router as teacher_router
 from app.routers.course import router as course_router
 from app.routers.leave import router as leave_router
+from app.routers.makeup_room import router as makeup_room_router
 from app.routers.communication import router as communication_router
 from app.routers.honor import router as honor_router
 from app.routers.announcement import router as announcement_router
@@ -23,6 +24,7 @@ routers = [
     teacher_router,
     course_router,
     leave_router,
+    makeup_room_router,
     communication_router,
     honor_router,
     announcement_router,

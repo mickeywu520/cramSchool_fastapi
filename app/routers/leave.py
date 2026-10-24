@@ -66,6 +66,10 @@ def _leave_dict(leave) -> dict:
         "status": leave.status,
         "course_name": leave.course.name if leave.course else None,
         "student_name": leave.student.student_name if leave.student else None,
+        "requested_room_id": leave.requested_room_id,
+        "requested_room_code": (
+            leave.requested_room.display_name if leave.requested_room else None
+        ),
         "requested_makeup_date": leave.requested_makeup_date,
         "requested_makeup_start": (
             leave.requested_makeup_start.strftime("%H:%M") if leave.requested_makeup_start else None
@@ -172,14 +176,18 @@ async def review_application(
 # Makeup endpoints
 @router.get("/makeup-options", response_model=list[MakeupOptionResponse])
 async def get_makeup_options(
-    course_id: int,
+    course_id: int | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    student_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_student),
 ):
-    """家長可選的補課場次（同一門課在指定區間內的上課日）。"""
-    return await leave_service.list_makeup_options(db, course_id, date_from, date_to)
+    """家長可選的補課場次（學生分校的補課教室固定時段，含剩餘座位）。"""
+    student = await _resolve_student(db, current_user.id, student_id)
+    return await leave_service.list_makeup_options(
+        db, student, course_id, date_from, date_to
+    )
 
 
 @router.get("/makeup", response_model=list[MakeupClassResponse])
@@ -197,7 +205,7 @@ async def get_my_makeup(
             "makeup_date": m.makeup_date,
             "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
             "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
-            "classroom": m.classroom, "status": m.status,
+            "classroom": m.classroom, "room_id": m.room_id, "status": m.status,
             "requested_by": m.requested_by or "teacher", "notes": m.notes,
         }
         for m in classes
@@ -219,7 +227,7 @@ async def get_upcoming_makeup(
             "makeup_date": m.makeup_date,
             "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
             "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
-            "classroom": m.classroom, "status": m.status,
+            "classroom": m.classroom, "room_id": m.room_id, "status": m.status,
             "requested_by": m.requested_by or "teacher", "notes": m.notes,
         }
         for m in classes
@@ -245,5 +253,6 @@ async def create_makeup(
         "course_name": m.course.name if m.course else None, "makeup_date": m.makeup_date,
         "start_time": m.start_time.strftime("%H:%M") if m.start_time else "",
         "end_time": m.end_time.strftime("%H:%M") if m.end_time else "",
-        "classroom": m.classroom, "status": m.status, "notes": m.notes,
+        "classroom": m.classroom, "room_id": m.room_id, "status": m.status,
+        "requested_by": m.requested_by or "teacher", "notes": m.notes,
     }

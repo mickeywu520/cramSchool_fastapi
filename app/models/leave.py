@@ -19,10 +19,13 @@ class LeaveApplication(Base):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
-    # 家長指定的補課場次（同一課程的未來場次）；老師核准時才寫入 makeup_classes
+    # 家長指定的補課場次（補課教室的固定時段）；老師核准時才寫入 makeup_classes
     requested_makeup_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     requested_makeup_start: Mapped[time | None] = mapped_column(Time, nullable=True)
     requested_makeup_end: Mapped[time | None] = mapped_column(Time, nullable=True)
+    requested_room_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("makeup_rooms.id"), nullable=True
+    )
 
     reviewed_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -35,4 +38,5 @@ class LeaveApplication(Base):
 
     student = relationship("Student", back_populates="leave_applications")
     course = relationship("Course", back_populates="leave_applications")
+    requested_room = relationship("MakeupRoom", foreign_keys=[requested_room_id])
     makeup_class = relationship("MakeupClass", back_populates="leave_application", uselist=False)

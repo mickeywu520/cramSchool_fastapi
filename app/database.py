@@ -100,9 +100,11 @@ async def _add_missing_columns():
             "requested_makeup_start": "TIME",
             "requested_makeup_end": "TIME",
             "review_note": "TEXT",
+            "requested_room_id": "INTEGER REFERENCES makeup_rooms(id)",
         },
         "makeup_classes": {
             "requested_by": "VARCHAR(20) NOT NULL DEFAULT 'teacher'",
+            "room_id": "INTEGER REFERENCES makeup_rooms(id)",
         },
     }
     async with engine.begin() as conn:
