@@ -59,6 +59,10 @@ def require_role(*roles: str):
 # Pre-built role dependencies
 require_student = require_role("student")
 require_teacher = require_role("teacher")
+# 只給「內部帳號管理」等真正需要最高權限的端點（目前只有 admin.py 的 /users）
 require_admin = require_role("admin")
-require_teacher_or_admin = require_role("teacher", "admin")
-require_any_authenticated = require_role("student", "teacher", "admin")
+# 後台功能：老師與三種後台帳號（admin / maintainer / user）都能操作
+require_teacher_or_admin = require_role("teacher", "admin", "maintainer", "user")
+require_any_authenticated = require_role(
+    "student", "teacher", "admin", "maintainer", "user"
+)
